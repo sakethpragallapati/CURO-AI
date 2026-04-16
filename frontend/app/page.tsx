@@ -6,6 +6,38 @@ import { auth } from '../lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Activity, Sparkles, Brain, Search, Shield, FlaskConical, Stethoscope, ChevronRight, Zap, BarChart3, Network, LogOut, FolderOpen } from 'lucide-react';
 import AuthModal from '../components/AuthModal';
+import StarBorder from '../components/StarBorder';
+import LogoLoop from '../components/LogoLoop';
+
+const features = [
+  { icon: Search, title: 'Evidence Retrieval', desc: 'Fetches and ranks peer-reviewed abstracts from OpenAlex in real-time, filtered by clinical authority.', color: 'curo-accent' },
+  { icon: Network, title: 'Knowledge Graph', desc: 'Automatically extracts clinical entity relationships and visualizes them as an interactive 3D graph.', color: 'curo-purple' },
+  { icon: Brain, title: 'Agentic Triage', desc: 'AI-driven clinical interview that dynamically adapts questions based on your responses.', color: 'curo-teal' },
+  { icon: Stethoscope, title: 'Differential Diagnosis', desc: 'Generates and ranks differential diagnoses using an LLM triage router with acuity prioritization.', color: 'curo-accent' },
+  { icon: Shield, title: 'Semantic Firewall', desc: 'Multi-query retrieval with contextual compression ensures only relevant evidence reaches synthesis.', color: 'curo-purple' },
+  { icon: BarChart3, title: 'Clinical Guidelines', desc: 'Synthesizes treatment protocols from NICE, CDC, and NIH guidelines for evidence-based pathways.', color: 'curo-teal' },
+  { icon: FolderOpen, title: 'Health Records Vault', desc: 'Upload multiple PDFs (including scanned reports via OCR) and query your medical history with RAG.', color: 'curo-accent' },
+];
+
+const featureLogos = features.map((feature, i) => ({
+  node: <span key={i} />,
+  title: feature.title,
+}));
+
+function FeatureCard({ feature }: { feature: typeof features[number] }) {
+  const Icon = feature.icon;
+  return (
+    <StarBorder color="magenta" speed="5s" thickness={2}>
+      <div className="p-6 group" style={{ minWidth: '280px', maxWidth: '320px' }}>
+        <div className={`w-11 h-11 rounded-xl bg-${feature.color}/15 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+          <Icon size={22} className={`text-${feature.color}`} />
+        </div>
+        <h3 className="text-sm font-bold text-curo-text mb-2">{feature.title}</h3>
+        <p className="text-xs text-curo-text-muted leading-relaxed">{feature.desc}</p>
+      </div>
+    </StarBorder>
+  );
+}
 
 export default function LandingPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -120,32 +152,29 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Features Grid */}
-        <section className="relative z-10 px-6 pb-20">
-          <div className="max-w-6xl mx-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {[
-                { icon: Search, title: 'Evidence Retrieval', desc: 'Fetches and ranks peer-reviewed abstracts from OpenAlex in real-time, filtered by clinical authority.', color: 'curo-accent' },
-                { icon: Network, title: 'Knowledge Graph', desc: 'Automatically extracts clinical entity relationships and visualizes them as an interactive 3D graph.', color: 'curo-purple' },
-                { icon: Brain, title: 'Agentic Triage', desc: 'AI-driven clinical interview that dynamically adapts questions based on your responses.', color: 'curo-teal' },
-                { icon: Stethoscope, title: 'Differential Diagnosis', desc: 'Generates and ranks differential diagnoses using an LLM triage router with acuity prioritization.', color: 'curo-accent' },
-                { icon: Shield, title: 'Semantic Firewall', desc: 'Multi-query retrieval with contextual compression ensures only relevant evidence reaches synthesis.', color: 'curo-purple' },
-                { icon: BarChart3, title: 'Clinical Guidelines', desc: 'Synthesizes treatment protocols from NICE, CDC, and NIH guidelines for evidence-based pathways.', color: 'curo-teal' },
-                { icon: FolderOpen, title: 'Health Records Vault', desc: 'Upload multiple PDFs (including scanned reports via OCR) and query your medical history with RAG.', color: 'curo-accent' },
-              ].map((feature, i) => (
-                <div
-                  key={i}
-                  className="glass-card p-6 group hover:border-curo-accent/30 transition-all animate-slide-up"
-                  style={{ animationDelay: `${0.5 + i * 0.1}s`, opacity: 0 }}
-                >
-                  <div className={`w-11 h-11 rounded-xl bg-${feature.color}/15 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                    <feature.icon size={22} className={`text-${feature.color}`} />
-                  </div>
-                  <h3 className="text-sm font-bold text-curo-text mb-2">{feature.title}</h3>
-                  <p className="text-xs text-curo-text-muted leading-relaxed">{feature.desc}</p>
-                </div>
-              ))}
-            </div>
+        {/* Features — Scrolling LogoLoop Carousel */}
+        <section className="relative z-10 pb-20 animate-slide-up" style={{ animationDelay: '0.6s', opacity: 0 }}>
+          <div className="max-w-7xl mx-auto px-6 mb-8">
+            <h2 className="text-lg sm:text-xl font-semibold text-white text-center mb-2">Powered by Cutting-Edge AI</h2>
+            <p className="text-sm text-curo-text-muted text-center">Explore our core capabilities</p>
+          </div>
+          <div style={{ height: '220px', position: 'relative', overflow: 'hidden' }}>
+            <LogoLoop
+              logos={featureLogos}
+              speed={60}
+              direction="left"
+              logoHeight={200}
+              gap={24}
+              hoverSpeed={0}
+              fadeOut
+              fadeOutColor="#0a0e1a"
+              ariaLabel="CURO AI Features"
+              renderItem={(item, key) => {
+                const idx = parseInt(String(key).split('-')[1]);
+                const feature = features[idx % features.length];
+                return <FeatureCard feature={feature} />;
+              }}
+            />
           </div>
         </section>
 
@@ -161,4 +190,4 @@ export default function LandingPage() {
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onSuccess={handleAuthSuccess} />}
     </>
   );
-}
+}

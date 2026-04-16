@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import DotGridBackground from '../components/DotGridBackground'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -27,8 +28,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-sans min-h-screen bg-curo-bg text-curo-text antialiased">
-        {/* Animated background mesh */}
+        {/* Animated mesh blobs (kept for ambient color) */}
         <div className="curo-bg-mesh" aria-hidden="true" />
+        {/* Interactive dot grid background */}
+        <DotGridBackground />
+        
+        {/* Fixed blur overlay to soften the dots without creating a containing block for content */}
+        <div className="fixed inset-0 z-0 pointer-events-none" style={{ backdropFilter: 'blur(0.5px)' }} aria-hidden="true" />
+
         {/* Main content */}
         <div className="relative z-10">
           {children}
