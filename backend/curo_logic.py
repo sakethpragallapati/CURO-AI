@@ -1214,64 +1214,145 @@ def delete_health_records(user_id: str, filename: str = None) -> dict:
 # GENERIC MODE — Web Search ReAct Agent for Common Ailments
 # ============================================================================
 
+def _scrape_page_text(url: str, timeout: int = 8) -> str:
+    """Fetches a webpage and extracts readable text content. Returns empty string on failure."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        
+        html = resp.text
+        
+        # Remove script and style blocks
+        html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<nav[^>]*>.*?</nav>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<footer[^>]*>.*?</footer>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<header[^>]*>.*?</header>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Strip all remaining tags
+        text = re.sub(r'<[^>]+>', ' ', html)
+        
+        # Clean up whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Decode HTML entities
+        import html as html_module
+        text = html_module.unescape(text)
+        
+        # Return a meaningful chunk (first ~3000 chars of body text)
+        return text[:3000] if len(text) > 3000 else text
+        
+    except Exception as e:
+        print(f"[!] Scrape failed for {url[:60]}: {e}")
+        return ""
+
+
 def process_generic_query(user_query: str, user_id: str = None) -> dict:
     """
-    Handles generic/simple medical queries using DuckDuckGo web search
-    to gather context, and a single LLM pass to format a prescription.
+    Handles generic/simple medical queries using deep DuckDuckGo web search.
+    Performs multi-angle research, scrapes actual page content from top results,
+    and synthesizes a comprehensive, cited response.
     """
     from duckduckgo_search import DDGS
     from langchain_core.prompts import PromptTemplate
     from langchain_core.output_parsers import StrOutputParser
 
-    print(f"--- [GENERIC MODE] Deep Search Processing: {user_query} ---\n")
+    print(f"--- [GENERIC MODE] Deep Research Processing: {user_query} ---\n")
 
-    context = ""
     sources = []
     seen_urls = set()
+    raw_results = []
+    
+    # --- Phase 1: Multi-angle DuckDuckGo search ---
+    search_queries = [
+        f"{user_query} medical treatment guidelines",
+        f"{user_query} causes symptoms diagnosis",
+        f"{user_query} home remedies natural treatment",
+        f"{user_query} when to see doctor red flags",
+    ]
     
     try:
         with DDGS() as ddgs:
-            # Multi-query strategy for comprehensive context
-            results1 = list(ddgs.text(f"{user_query} clinical treatment and medication", max_results=5))
-            results2 = list(ddgs.text(f"{user_query} best home remedies natural", max_results=5))
-            
-            all_results = results1 + results2
-            
-            for r in all_results:
-                url = r.get('href')
-                if url and url not in seen_urls:
-                    seen_urls.add(url)
-                    title = r.get('title', 'N/A')
-                    snippet = r.get('body', 'N/A')
-                    context += f"Source: {title}\nSnippet: {snippet}\n\n"
-                    sources.append({
-                        "title": title,
-                        "url": url,
-                        "snippet": snippet[:150] + "..." if len(snippet) > 150 else snippet
-                    })
+            for sq in search_queries:
+                try:
+                    results = list(ddgs.text(sq, max_results=5))
+                    for r in results:
+                        url = r.get('href', '')
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            raw_results.append(r)
+                except Exception as inner_e:
+                    print(f"[!] Sub-query failed: {sq[:50]} — {inner_e}")
+                    continue
     except Exception as e:
-        print(f"[!] DuckDuckGo Comprehensive Search failed: {e}")
+        print(f"[!] DuckDuckGo search init failed: {e}")
 
+    print(f"[*] Collected {len(raw_results)} unique search results across {len(search_queries)} queries.")
+
+    # --- Phase 2: Scrape actual page content from top results ---
+    enriched_context = ""
+    source_index = 0
+    
+    for r in raw_results[:12]:  # Process top 12 unique results
+        url = r.get('href', '')
+        title = r.get('title', 'N/A')
+        snippet = r.get('body', 'N/A')
+        
+        # Attempt to scrape full page text for deeper context
+        page_text = _scrape_page_text(url)
+        
+        source_index += 1
+        
+        if page_text and len(page_text) > 200:
+            # Use scraped content (richer than snippet)
+            enriched_context += f"[Source {source_index}] {title}\nURL: {url}\nContent: {page_text[:2000]}\n\n"
+            print(f"  [✓] Scraped [{source_index}]: {title[:60]}... ({len(page_text)} chars)")
+        else:
+            # Fall back to DuckDuckGo snippet
+            enriched_context += f"[Source {source_index}] {title}\nURL: {url}\nSnippet: {snippet}\n\n"
+            print(f"  [~] Snippet [{source_index}]: {title[:60]}...")
+        
+        sources.append({
+            "index": source_index,
+            "title": title,
+            "url": url,
+            "snippet": snippet[:200] + "..." if len(snippet) > 200 else snippet
+        })
+
+    print(f"[*] Built enriched context from {len(sources)} sources ({len(enriched_context)} chars total).")
+
+    # --- Phase 3: Deep LLM synthesis with inline citations ---
     prompt = PromptTemplate.from_template(
-        "You are Curo AI, a helpful and empathetic medical assistant. A user has a common health issue.\n\n"
+        "You are Curo AI, an expert medical research assistant. A user has a health-related question.\n"
+        "You have been provided with extensively researched web sources below.\n\n"
         "USER QUERY: {query}\n\n"
-        "WEB SEARCH CONTEXT (if any):\n{context}\n\n"
-        "Provide a helpful, empathetic response structure:\n"
-        "- **Quick Relief**: Immediate steps they can take right now\n"
-        "- **Recommended Medications**: OTC medications with proper dosage (if found in context)\n"
-        "- **Home Remedies**: Natural/home treatments\n"
-        "- **When to See a Doctor**: Red flags that require professional attention\n\n"
-        "IMPORTANT RULES:\n"
-        "1. Keep it concise, actionable, and empathetic.\n"
-        "2. Do NOT use markdown headers (##), use **bold text** for section labels.\n"
-        "3. Always include a disclaimer at the end that this is not professional medical advice."
+        "RESEARCHED WEB SOURCES:\n{context}\n\n"
+        "INSTRUCTIONS:\n"
+        "Provide a thorough, well-researched, and empathetic response. Structure your answer as follows:\n\n"
+        "- **Understanding Your Concern**: Briefly acknowledge the issue and explain what it is.\n"
+        "- **Possible Causes**: What commonly causes this condition or symptom.\n"
+        "- **Recommended Treatments**: Evidence-based OTC medications with proper dosages, and clinical treatments if applicable.\n"
+        "- **Home Remedies & Lifestyle**: Natural and home-based approaches supported by the sources.\n"
+        "- **When to See a Doctor**: Specific red flags and warning signs that warrant immediate medical attention.\n\n"
+        "CRITICAL RULES:\n"
+        "1. CITE your sources inline using [1], [2], [3] etc. corresponding to the source numbers provided. "
+        "Place citations at the end of the specific claim or fact they support.\n"
+        "2. Be thorough and detailed — do NOT give a surface-level answer. Explain WHY treatments work.\n"
+        "3. Include specific dosages, durations, and practical instructions where the sources provide them.\n"
+        "4. Do NOT use markdown headers (##). Use **bold text** for section labels.\n"
+        "5. Maintain a warm, empathetic, and professional tone throughout.\n"
+        "6. End with a clear medical disclaimer that this is informational only and not a substitute for professional medical advice.\n"
+        "7. Do NOT fabricate information. Only cite facts found in the provided sources.\n"
     )
 
     try:
         chain = prompt | llm | StrOutputParser()
-        response_text = chain.invoke({"query": user_query, "context": context})
+        response_text = chain.invoke({"query": user_query, "context": enriched_context})
 
-        print(f"[*] Generic mode response generated successfully.")
+        print(f"[*] Deep generic research response generated successfully.")
 
         return {
             "response": response_text,

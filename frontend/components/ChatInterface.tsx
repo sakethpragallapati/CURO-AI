@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ResultsDashboard from './ResultsDashboard';
 import HistorySidebar from './HistorySidebar';
-import { Send, Activity, Sparkles, Brain, Search, BookOpen, FlaskConical, History, LogOut, Mic, MicOff, ChevronDown, ChevronUp, UserSquare2, RefreshCw, FolderOpen, Database, Plus, Paperclip, AlertCircle, CheckCircle2, ChevronRight, File, Pill } from 'lucide-react';
+import { Send, Activity, Sparkles, Brain, Search, BookOpen, FlaskConical, History, LogOut, Mic, MicOff, ChevronDown, ChevronUp, UserSquare2, RefreshCw, FolderOpen, Database, Plus, Paperclip, AlertCircle, CheckCircle2, ChevronRight, File, Pill, ExternalLink, Globe } from 'lucide-react';
 import VoiceVisualizer from './VoiceVisualizer';
 import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
@@ -33,10 +33,11 @@ type ChatMessage = {
 };
 
 const GENERIC_PIPELINE_STEPS = [
-  { label: 'Initializing clinical web agent…', duration: 1500 },
-  { label: 'Scouring trusted medical sources…', duration: 3000 },
-  { label: 'Cross-referencing treatment guidelines…', duration: 3000 },
-  { label: 'Synthesizing actionable remedies…', duration: 3500 },
+  { label: 'Launching multi-angle web search…', duration: 2000 },
+  { label: 'Scraping medical sources & articles…', duration: 5000 },
+  { label: 'Analyzing treatment guidelines…', duration: 4000 },
+  { label: 'Cross-referencing clinical data…', duration: 4000 },
+  { label: 'Synthesizing researched response…', duration: 5000 },
 ];
 
 const PIPELINE_STEPS = [
@@ -45,6 +46,45 @@ const PIPELINE_STEPS = [
   { label: 'Building knowledge graph…', duration: 6000 },
   { label: 'Synthesizing clinical analysis…', duration: 12000 },
 ];
+
+function renderInlineText(text: string, keyPrefix: string = '') {
+  // Split on bold markers AND citation markers like [1], [2], etc.
+  const parts = text.split(/(\*\*.*?\*\*|\[\d+\])/g);
+  return parts.map((part, j) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return (
+        <strong key={`${keyPrefix}-${j}`} className="text-curo-text font-semibold">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    const citationMatch = part.match(/^\[(\d+)\]$/);
+    if (citationMatch) {
+      const num = citationMatch[1];
+      return (
+        <a
+          key={`${keyPrefix}-cite-${j}`}
+          href={`#source-${num}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(`source-${num}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Flash animation
+            const el = document.getElementById(`source-${num}`);
+            if (el) {
+              el.classList.add('ring-2', 'ring-curo-accent', 'scale-[1.02]');
+              setTimeout(() => el.classList.remove('ring-2', 'ring-curo-accent', 'scale-[1.02]'), 1500);
+            }
+          }}
+          className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mx-0.5 text-[10px] font-bold bg-curo-teal/20 text-curo-teal rounded-md hover:bg-curo-teal/30 transition-colors cursor-pointer align-super leading-none no-underline"
+          title={`View Source ${num}`}
+        >
+          {num}
+        </a>
+      );
+    }
+    return <span key={`${keyPrefix}-${j}`}>{part}</span>;
+  });
+}
 
 function parseResponse(text: string) {
   if (!text) return null;
@@ -56,7 +96,7 @@ function parseResponse(text: string) {
         <ol key={i} className="list-decimal list-inside space-y-1.5 mb-4 text-curo-text/90">
           {items.map((item, j) => (
             <li key={j} className="leading-relaxed">
-              {item.replace(/^\d+\.\s*/, '')}
+              {renderInlineText(item.replace(/^\d+\.\s*/, ''), `ol-${i}-${j}`)}
             </li>
           ))}
         </ol>
@@ -68,24 +108,15 @@ function parseResponse(text: string) {
         <ul key={i} className="list-disc list-inside space-y-1.5 mb-4 text-curo-text/90">
           {items.map((item, j) => (
             <li key={j} className="leading-relaxed">
-              {item.replace(/^[-•]\s*/, '')}
+              {renderInlineText(item.replace(/^[-•]\s*/, ''), `ul-${i}-${j}`)}
             </li>
           ))}
         </ul>
       );
     }
-    const parts = p.split(/(\*\*.*?\*\*)/g);
     return (
       <p key={i} className="mb-4 leading-relaxed text-curo-text/90">
-        {parts.map((part, j) =>
-          part.startsWith('**') && part.endsWith('**') ? (
-            <strong key={j} className="text-curo-text font-semibold">
-              {part.slice(2, -2)}
-            </strong>
-          ) : (
-            part
-          )
-        )}
+        {renderInlineText(p, `p-${i}`)}
       </p>
     );
   });
@@ -586,28 +617,55 @@ export default function ChatInterface() {
                                     </div>
                                  )}
 
-                                 {/* Sources for Generic Mode */}
+                                 {/* Sources for Generic Mode — Perplexity-style */}
                                  {msg.mode === 'generic' && msg.sources && msg.sources.length > 0 && (
-                                    <div className="mt-8 pt-5 border-t border-white/[0.05]">
-                                       <p className="text-[10px] font-semibold text-curo-text-dim uppercase tracking-wider mb-4 flex items-center gap-2">
-                                          <Search size={12} className="text-curo-accent" /> 
-                                          Deep Web Research Sources
-                                       </p>
-                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                          {msg.sources.map((src, i) => (
-                                             <a key={i} href={src.url} target="_blank" rel="noopener noreferrer" className="block px-4 py-3 bg-[#141b2a] border border-curo-border rounded-xl hover:border-curo-accent/50 hover:bg-[#1a2333] transition-all group">
-                                                <div className="flex items-start gap-3">
-                                                   <div className="w-8 h-8 rounded-lg bg-curo-accent/10 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-curo-accent/20 transition-colors">
-                                                      <File size={14} className="text-curo-accent"/>
+                                    <div className="mt-8 pt-6 border-t border-white/[0.06]">
+                                       <div className="flex items-center gap-2.5 mb-5">
+                                          <div className="w-6 h-6 rounded-lg bg-curo-teal/15 flex items-center justify-center">
+                                             <Globe size={13} className="text-curo-teal" />
+                                          </div>
+                                          <p className="text-[11px] font-semibold text-curo-text-muted uppercase tracking-widest">
+                                             Sources · {msg.sources.length} references
+                                          </p>
+                                       </div>
+                                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                          {msg.sources.map((src, i) => {
+                                             const sourceNum = (src as any).index || (i + 1);
+                                             let hostname = '';
+                                             try { hostname = new URL(src.url).hostname.replace('www.', ''); } catch { hostname = src.url; }
+                                             return (
+                                                <a
+                                                   key={i}
+                                                   id={`source-${sourceNum}`}
+                                                   href={src.url}
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   className="group block px-4 py-3.5 bg-[#0d1220] border border-white/[0.06] rounded-xl hover:border-curo-teal/40 hover:bg-[#111827] transition-all duration-300 transform hover:scale-[1.01] hover:shadow-lg hover:shadow-curo-teal/5"
+                                                >
+                                                   <div className="flex items-start gap-3">
+                                                      <div className="relative shrink-0">
+                                                         <div className="w-7 h-7 rounded-lg bg-curo-teal/10 group-hover:bg-curo-teal/20 flex items-center justify-center transition-colors text-[11px] font-bold text-curo-teal">
+                                                            {sourceNum}
+                                                         </div>
+                                                      </div>
+                                                      <div className="overflow-hidden flex-1 min-w-0">
+                                                         <div className="flex items-center gap-2 mb-1.5">
+                                                            <img
+                                                               src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=16`}
+                                                               alt=""
+                                                               className="w-3.5 h-3.5 rounded-sm opacity-70 group-hover:opacity-100 transition-opacity"
+                                                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                            />
+                                                            <span className="text-[10px] text-curo-teal/70 group-hover:text-curo-teal truncate transition-colors">{hostname}</span>
+                                                            <ExternalLink size={10} className="text-curo-text-dim opacity-0 group-hover:opacity-70 transition-opacity ml-auto shrink-0" />
+                                                         </div>
+                                                         <p className="text-[12.5px] font-medium text-curo-text/90 group-hover:text-curo-text leading-snug line-clamp-2 transition-colors">{src.title}</p>
+                                                         <p className="text-[11px] text-curo-text-dim mt-1.5 line-clamp-2 leading-relaxed">{src.snippet}</p>
+                                                      </div>
                                                    </div>
-                                                   <div className="overflow-hidden">
-                                                      <p className="text-[13px] font-medium text-curo-text truncate">{src.title}</p>
-                                                      <p className="text-[11px] text-curo-text-dim mt-1 line-clamp-2 leading-relaxed">{src.snippet}</p>
-                                                      <p className="text-[10px] text-curo-teal mt-2 truncate opacity-80">{new URL(src.url).hostname.replace('www.', '')}</p>
-                                                   </div>
-                                                </div>
-                                             </a>
-                                          ))}
+                                                </a>
+                                             );
+                                          })}
                                        </div>
                                     </div>
                                  )}
