@@ -1256,9 +1256,14 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
     Performs multi-angle research, scrapes actual page content from top results,
     and synthesizes a comprehensive, cited response.
     """
-    from duckduckgo_search import DDGS
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        from duckduckgo_search import DDGS
     from langchain_core.prompts import PromptTemplate
     from langchain_core.output_parsers import StrOutputParser
+    import time
+    import traceback
 
     print(f"--- [GENERIC MODE] Deep Research Processing: {user_query} ---\n")
 
@@ -1266,6 +1271,80 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
     seen_urls = set()
     raw_results = []
     
+    def _extract_result_fields(r):
+        """Normalize search result fields across duckduckgo-search library versions."""
+        url = r.get('href') or r.get('link') or r.get('url', '')
+        title = r.get('title', 'N/A')
+        snippet = r.get('body') or r.get('snippet') or r.get('description', 'N/A')
+        return url, title, snippet
+
+    # --- Trusted & Blocked domain lists for quality control ---
+    TRUSTED_DOMAINS = {
+        # Top-tier medical institutions & government
+        'mayoclinic.org', 'clevelandclinic.org', 'hopkinsmedicine.org', 'mountsinai.org',
+        'cdc.gov', 'nih.gov', 'who.int', 'medlineplus.gov', 'ncbi.nlm.nih.gov',
+        'pubmed.ncbi.nlm.nih.gov', 'fda.gov', 'nhs.uk',
+        # Reputable medical information sites
+        'webmd.com', 'healthline.com', 'verywellhealth.com', 'medicalnewstoday.com',
+        'health.harvard.edu', 'medicinenet.com', 'drugs.com', 'rxlist.com',
+        'emedicinehealth.com', 'merckmanuals.com', 'uptodate.com',
+        # Specialty & trusted health publishers
+        'aad.org', 'heart.org', 'cancer.org', 'diabetes.org', 'lung.org',
+        'health.com', 'everydayhealth.com', 'patient.info', 'kidshealth.org',
+        'familydoctor.org', 'betterhealth.vic.gov.au', 'newmouth.com',
+    }
+
+    BLOCKED_DOMAIN_KEYWORDS = [
+        # Non-English regional domains
+        '.in', '.cn', '.ru', '.kr', '.jp', '.br', '.de', '.fr', '.es', '.it',
+        '.pl', '.tr', '.id', '.vn', '.th', '.tw', '.my', '.ph', '.pk', '.bd',
+        '.ng', '.ke', '.za', '.ar', '.mx', '.co', '.cl', '.pe',
+        # Low-quality / spam patterns
+        'quora.com', 'reddit.com', 'pinterest.com', 'facebook.com', 'twitter.com',
+        'tiktok.com', 'youtube.com', 'instagram.com', 'linkedin.com',
+        'amazon.com', 'ebay.com', 'alibaba.com', 'flipkart.com',
+        'blogspot.com', 'wordpress.com', 'medium.com', 'wix.com',
+        '1mg.com', 'mrmed.in', 'practo.com', 'lybrate.com', 'apollo247.com',
+        'netmeds.com', 'pharmeasy.in', 'tata1mg.com',
+    ]
+
+    def _is_trusted_domain(url: str) -> bool:
+        """Check if URL belongs to a trusted medical domain."""
+        try:
+            from urllib.parse import urlparse
+            hostname = urlparse(url).hostname or ''
+            hostname = hostname.lower().replace('www.', '')
+            return any(hostname == td or hostname.endswith('.' + td) for td in TRUSTED_DOMAINS)
+        except:
+            return False
+
+    def _is_blocked_domain(url: str) -> bool:
+        """Check if URL belongs to a blocked/non-English domain."""
+        try:
+            from urllib.parse import urlparse
+            hostname = urlparse(url).hostname or ''
+            hostname = hostname.lower()
+            # Check blocked keywords
+            for blocked in BLOCKED_DOMAIN_KEYWORDS:
+                if blocked.startswith('.'):
+                    # TLD check — only block if domain ENDS with this TLD
+                    if hostname.endswith(blocked) and not any(hostname.endswith('.' + td) for td in TRUSTED_DOMAINS):
+                        return True
+                else:
+                    if blocked in hostname:
+                        return True
+            return False
+        except:
+            return True  # Block if we can't parse
+
+    def _is_english_content(title: str, snippet: str) -> bool:
+        """Basic heuristic to check if content is in English."""
+        combined = (title + ' ' + snippet).lower()
+        # Check for common English words
+        english_markers = ['the', 'and', 'for', 'with', 'that', 'this', 'from', 'your', 'can', 'may', 'are', 'will', 'should', 'have', 'been', 'treatment', 'health', 'medical', 'doctor', 'symptoms']
+        english_count = sum(1 for word in english_markers if f' {word} ' in f' {combined} ')
+        return english_count >= 3  # At least 3 English marker words
+
     # --- Phase 1: Multi-angle DuckDuckGo search ---
     search_queries = [
         f"{user_query} medical treatment guidelines",
@@ -1274,23 +1353,70 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         f"{user_query} when to see doctor red flags",
     ]
     
+    # Primary search attempt (without context manager for broader version compatibility)
     try:
-        with DDGS() as ddgs:
-            for sq in search_queries:
-                try:
-                    results = list(ddgs.text(sq, max_results=5))
-                    for r in results:
-                        url = r.get('href', '')
-                        if url and url not in seen_urls:
-                            seen_urls.add(url)
-                            raw_results.append(r)
-                except Exception as inner_e:
-                    print(f"[!] Sub-query failed: {sq[:50]} — {inner_e}")
-                    continue
+        ddgs = DDGS()
+        for sq in search_queries:
+            try:
+                results = list(ddgs.text(sq, region='us-en', safesearch='moderate', max_results=8))
+                for r in results:
+                    url, title, snippet = _extract_result_fields(r)
+                    if not url or url in seen_urls:
+                        continue
+                    if _is_blocked_domain(url):
+                        print(f"  [✗] Blocked: {url[:60]}")
+                        continue
+                    if not _is_english_content(title, snippet):
+                        print(f"  [✗] Non-English: {url[:60]}")
+                        continue
+                    seen_urls.add(url)
+                    raw_results.append({
+                        'href': url,
+                        'title': title,
+                        'body': snippet,
+                        'trusted': _is_trusted_domain(url)
+                    })
+            except Exception as inner_e:
+                print(f"[!] Sub-query failed: {sq[:50]} — {inner_e}")
+                continue
+            # Small delay between queries to avoid rate limiting
+            time.sleep(0.3)
     except Exception as e:
-        print(f"[!] DuckDuckGo search init failed: {e}")
+        print(f"[!] DuckDuckGo primary search failed: {e}")
+        traceback.print_exc()
 
-    print(f"[*] Collected {len(raw_results)} unique search results across {len(search_queries)} queries.")
+    # Fallback: If primary search yielded no results, retry with a single direct query
+    if not raw_results:
+        print("[*] Primary search returned 0 results. Attempting fallback single query via HTML backend...")
+        time.sleep(1)  # Brief pause
+        try:
+            ddgs_retry = DDGS()
+            fallback_results = list(ddgs_retry.text(user_query, region='us-en', safesearch='moderate', backend='html', max_results=15))
+            for r in fallback_results:
+                url, title, snippet = _extract_result_fields(r)
+                if not url or url in seen_urls:
+                    continue
+                if _is_blocked_domain(url):
+                    continue
+                if not _is_english_content(title, snippet):
+                    continue
+                seen_urls.add(url)
+                raw_results.append({
+                    'href': url,
+                    'title': title,
+                    'body': snippet,
+                    'trusted': _is_trusted_domain(url)
+                })
+            print(f"[*] Fallback search collected {len(raw_results)} results.")
+        except Exception as retry_e:
+            print(f"[!] Fallback search also failed: {retry_e}")
+            traceback.print_exc()
+
+    # Sort results: trusted domains first, then others
+    raw_results.sort(key=lambda x: (0 if x.get('trusted') else 1))
+
+    trusted_count = sum(1 for r in raw_results if r.get('trusted'))
+    print(f"[*] Collected {len(raw_results)} quality search results ({trusted_count} from trusted medical sites).")
 
     # --- Phase 2: Scrape actual page content from top results ---
     enriched_context = ""
@@ -1301,19 +1427,21 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         title = r.get('title', 'N/A')
         snippet = r.get('body', 'N/A')
         
+        if not url:
+            continue
+        
         # Attempt to scrape full page text for deeper context
         page_text = _scrape_page_text(url)
         
         source_index += 1
         
+        trust_tag = " ★" if r.get('trusted') else ""
         if page_text and len(page_text) > 200:
-            # Use scraped content (richer than snippet)
             enriched_context += f"[Source {source_index}] {title}\nURL: {url}\nContent: {page_text[:2000]}\n\n"
-            print(f"  [✓] Scraped [{source_index}]: {title[:60]}... ({len(page_text)} chars)")
+            print(f"  [✓] Scraped [{source_index}]{trust_tag}: {title[:60]}... ({len(page_text)} chars)")
         else:
-            # Fall back to DuckDuckGo snippet
             enriched_context += f"[Source {source_index}] {title}\nURL: {url}\nSnippet: {snippet}\n\n"
-            print(f"  [~] Snippet [{source_index}]: {title[:60]}...")
+            print(f"  [~] Snippet [{source_index}]{trust_tag}: {title[:60]}...")
         
         sources.append({
             "index": source_index,
@@ -1344,8 +1472,11 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         "3. Include specific dosages, durations, and practical instructions where the sources provide them.\n"
         "4. Do NOT use markdown headers (##). Use **bold text** for section labels.\n"
         "5. Maintain a warm, empathetic, and professional tone throughout.\n"
-        "6. End with a clear medical disclaimer that this is informational only and not a substitute for professional medical advice.\n"
-        "7. Do NOT fabricate information. Only cite facts found in the provided sources.\n"
+        "6. Do NOT fabricate information. Only cite facts found in the provided sources.\n"
+        "7. STRICT RULE: NEVER output a list of sources, URLs, or a references section at the end. Your response MUST end exactly after the medical disclaimer. The system UI will display the actual reference cards automatically.\n\n"
+        "You MUST conclude your response perfectly with this EXACT section and nothing else after it:\n"
+        "**Medical Disclaimer**\n"
+        "This response is for informational purposes only and is not a substitute for professional medical advice. Please consult with a healthcare professional for proper diagnosis and treatment."
     )
 
     try:

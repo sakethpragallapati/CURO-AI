@@ -48,14 +48,21 @@ const PIPELINE_STEPS = [
 ];
 
 function renderInlineText(text: string, keyPrefix: string = '') {
-  // Split on bold markers AND citation markers like [1], [2], etc.
-  const parts = text.split(/(\*\*.*?\*\*|\[\d+\])/g);
+  // Split on bold markers, italic markers, and citation markers like [1], [2], etc.
+  const parts = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*|\[\d+\])/g);
   return parts.map((part, j) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return (
-        <strong key={`${keyPrefix}-${j}`} className="text-curo-text font-semibold">
+        <strong key={`${keyPrefix}-b${j}`} className="text-curo-text font-semibold">
           {part.slice(2, -2)}
         </strong>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2 && !part.startsWith('**')) {
+      return (
+        <em key={`${keyPrefix}-i${j}`} className="text-curo-text-muted italic text-[13px]">
+          {part.slice(1, -1)}
+        </em>
       );
     }
     const citationMatch = part.match(/^\[(\d+)\]$/);
@@ -68,7 +75,6 @@ function renderInlineText(text: string, keyPrefix: string = '') {
           onClick={(e) => {
             e.preventDefault();
             document.getElementById(`source-${num}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Flash animation
             const el = document.getElementById(`source-${num}`);
             if (el) {
               el.classList.add('ring-2', 'ring-curo-accent', 'scale-[1.02]');
@@ -88,38 +94,136 @@ function renderInlineText(text: string, keyPrefix: string = '') {
 
 function parseResponse(text: string) {
   if (!text) return null;
-  const paragraphs = text.split(/\n{2,}/).filter(Boolean);
-  return paragraphs.map((p, i) => {
-    if (/^\d+\.\s/.test(p.trim())) {
-      const items = p.split(/\n/).filter(Boolean);
-      return (
-        <ol key={i} className="list-decimal list-inside space-y-1.5 mb-4 text-curo-text/90">
-          {items.map((item, j) => (
-            <li key={j} className="leading-relaxed">
-              {renderInlineText(item.replace(/^\d+\.\s*/, ''), `ol-${i}-${j}`)}
-            </li>
-          ))}
-        </ol>
+
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let lineIdx = 0;
+  let elementKey = 0;
+
+  while (lineIdx < lines.length) {
+    const trimmed = lines[lineIdx].trim();
+
+    // Skip empty lines
+    if (!trimmed) { lineIdx++; continue; }
+
+    // --- Markdown ## headers ---
+    const h2Match = trimmed.match(/^#{1,3}\s+(.+)$/);
+    if (h2Match) {
+      elements.push(
+        <div key={`sec-${elementKey++}`} className="flex items-center gap-2.5 mt-7 mb-3 first:mt-1">
+          <div className="w-1 h-5 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
+          <h3 className="text-[15px] font-bold text-curo-text tracking-tight">{renderInlineText(h2Match[1], `h-${lineIdx}`)}</h3>
+        </div>
       );
+      lineIdx++;
+      continue;
     }
-    if (/^[-•]\s/.test(p.trim())) {
-      const items = p.split(/\n/).filter(Boolean);
-      return (
-        <ul key={i} className="list-disc list-inside space-y-1.5 mb-4 text-curo-text/90">
-          {items.map((item, j) => (
-            <li key={j} className="leading-relaxed">
-              {renderInlineText(item.replace(/^[-•]\s*/, ''), `ul-${i}-${j}`)}
-            </li>
-          ))}
-        </ul>
+
+    // --- Section headers: lines that are ONLY bold text like **Header** or **Header**: ---
+    const headerMatch = trimmed.match(/^\*\*([^*]+)\*\*[:\s\-\u2013\u2014]*$/);
+    if (headerMatch && trimmed.length < 100) {
+      elements.push(
+        <div key={`sec-${elementKey++}`} className="flex items-center gap-2.5 mt-7 mb-3 first:mt-1">
+          <div className="w-1 h-5 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
+          <h3 className="text-[15px] font-bold text-curo-text tracking-tight">{headerMatch[1].trim()}</h3>
+        </div>
       );
+      lineIdx++;
+      continue;
     }
-    return (
-      <p key={i} className="mb-4 leading-relaxed text-curo-text/90">
-        {renderInlineText(p, `p-${i}`)}
-      </p>
-    );
-  });
+
+    // --- Bullet lists (-, \u2022, or * but not **) ---
+    if (/^[-\u2022]\s/.test(trimmed) || (/^\*\s/.test(trimmed) && !/^\*\*/.test(trimmed))) {
+      const items: string[] = [];
+      while (lineIdx < lines.length) {
+        const l = lines[lineIdx].trim();
+        if (!l) break;
+        if (/^[-\u2022]\s/.test(l) || (/^\*\s/.test(l) && !/^\*\*/.test(l))) {
+          items.push(l.replace(/^[-\u2022*]\s*/, ''));
+          lineIdx++;
+        } else {
+          break;
+        }
+      }
+      if (items.length > 0) {
+        elements.push(
+          <ul key={`ul-${elementKey++}`} className="space-y-2.5 mb-5 ml-0.5">
+            {items.map((item, j) => (
+              <li key={j} className="flex items-start gap-2.5 text-[14px] text-curo-text/85 leading-relaxed">
+                <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-curo-teal/50 shrink-0" />
+                <span className="flex-1">{renderInlineText(item, `uli-${elementKey}-${j}`)}</span>
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      continue;
+    }
+
+    // --- Numbered lists (1. or 1) style) ---
+    if (/^\d+[.)]\s/.test(trimmed)) {
+      const items: string[] = [];
+      while (lineIdx < lines.length) {
+        const l = lines[lineIdx].trim();
+        if (!l) break;
+        if (/^\d+[.)]\s/.test(l)) {
+          items.push(l.replace(/^\d+[.)]\s*/, ''));
+          lineIdx++;
+        } else {
+          break;
+        }
+      }
+      if (items.length > 0) {
+        elements.push(
+          <ol key={`ol-${elementKey++}`} className="space-y-2.5 mb-5 ml-0.5">
+            {items.map((item, j) => (
+              <li key={j} className="flex items-start gap-3 text-[14px] text-curo-text/85 leading-relaxed">
+                <span className="mt-0.5 min-w-[22px] h-[22px] rounded-full bg-curo-accent/10 flex items-center justify-center text-[11px] font-bold text-curo-accent shrink-0">{j + 1}</span>
+                <span className="flex-1">{renderInlineText(item, `oli-${elementKey}-${j}`)}</span>
+              </li>
+            ))}
+          </ol>
+        );
+      }
+      continue;
+    }
+
+    // --- Regular paragraph: collect consecutive text lines ---
+    const paraLines: string[] = [];
+    while (lineIdx < lines.length) {
+      const l = lines[lineIdx].trim();
+      if (!l) { lineIdx++; break; }
+      if (/^[-\u2022]\s/.test(l)) break;
+      if (/^\*\s/.test(l) && !/^\*\*/.test(l)) break;
+      if (/^\d+[.)]\s/.test(l)) break;
+      if (/^#{1,3}\s/.test(l)) break;
+      if (l.match(/^\*\*[^*]+\*\*[:\s\-\u2013\u2014]*$/) && l.length < 100) break;
+      paraLines.push(l);
+      lineIdx++;
+    }
+
+    if (paraLines.length > 0) {
+      const paraText = paraLines.join(' ');
+
+      // Detect disclaimer / italic wrapper
+      const stripped = paraText.trim();
+      if (/^\*[^*]/.test(stripped) && /[^*]\*$/.test(stripped)) {
+        elements.push(
+          <p key={`disc-${elementKey++}`} className="mt-6 pt-4 border-t border-white/[0.06] text-[12px] text-curo-text-dim/70 italic leading-relaxed">
+            {stripped.replace(/^\*+\s*|\s*\*+$/g, '')}
+          </p>
+        );
+      } else {
+        elements.push(
+          <p key={`p-${elementKey++}`} className="mb-3.5 leading-[1.85] text-[14px] text-curo-text/85">
+            {renderInlineText(paraText, `p-${elementKey}`)}
+          </p>
+        );
+      }
+    }
+  }
+
+  return elements.length > 0 ? elements : null;
 }
 
 export default function ChatInterface() {
@@ -612,63 +716,78 @@ export default function ChatInterface() {
                            {msg.role === 'assistant' && !msg.isLoading && !msg.error && (
                               <div className="space-y-4 pt-1 w-full">
                                  {msg.content && !msg.result && (
-                                    <div className="prose-sm max-w-none text-curo-text/90">
+                                    <div className="max-w-none">
                                        {parseResponse(msg.content)}
                                     </div>
                                  )}
 
-                                 {/* Sources for Generic Mode — Perplexity-style */}
-                                 {msg.mode === 'generic' && msg.sources && msg.sources.length > 0 && (
-                                    <div className="mt-8 pt-6 border-t border-white/[0.06]">
-                                       <div className="flex items-center gap-2.5 mb-5">
-                                          <div className="w-6 h-6 rounded-lg bg-curo-teal/15 flex items-center justify-center">
-                                             <Globe size={13} className="text-curo-teal" />
-                                          </div>
-                                          <p className="text-[11px] font-semibold text-curo-text-muted uppercase tracking-widest">
-                                             Sources · {msg.sources.length} references
-                                          </p>
-                                       </div>
-                                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                          {msg.sources.map((src, i) => {
-                                             const sourceNum = (src as any).index || (i + 1);
-                                             let hostname = '';
-                                             try { hostname = new URL(src.url).hostname.replace('www.', ''); } catch { hostname = src.url; }
-                                             return (
-                                                <a
-                                                   key={i}
-                                                   id={`source-${sourceNum}`}
-                                                   href={src.url}
-                                                   target="_blank"
-                                                   rel="noopener noreferrer"
-                                                   className="group block px-4 py-3.5 bg-[#0d1220] border border-white/[0.06] rounded-xl hover:border-curo-teal/40 hover:bg-[#111827] transition-all duration-300 transform hover:scale-[1.01] hover:shadow-lg hover:shadow-curo-teal/5"
-                                                >
-                                                   <div className="flex items-start gap-3">
-                                                      <div className="relative shrink-0">
-                                                         <div className="w-7 h-7 rounded-lg bg-curo-teal/10 group-hover:bg-curo-teal/20 flex items-center justify-center transition-colors text-[11px] font-bold text-curo-teal">
-                                                            {sourceNum}
-                                                         </div>
-                                                      </div>
-                                                      <div className="overflow-hidden flex-1 min-w-0">
-                                                         <div className="flex items-center gap-2 mb-1.5">
-                                                            <img
-                                                               src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=16`}
-                                                               alt=""
-                                                               className="w-3.5 h-3.5 rounded-sm opacity-70 group-hover:opacity-100 transition-opacity"
-                                                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                            />
-                                                            <span className="text-[10px] text-curo-teal/70 group-hover:text-curo-teal truncate transition-colors">{hostname}</span>
-                                                            <ExternalLink size={10} className="text-curo-text-dim opacity-0 group-hover:opacity-70 transition-opacity ml-auto shrink-0" />
-                                                         </div>
-                                                         <p className="text-[12.5px] font-medium text-curo-text/90 group-hover:text-curo-text leading-snug line-clamp-2 transition-colors">{src.title}</p>
-                                                         <p className="text-[11px] text-curo-text-dim mt-1.5 line-clamp-2 leading-relaxed">{src.snippet}</p>
-                                                      </div>
-                                                   </div>
-                                                </a>
-                                             );
-                                          })}
-                                       </div>
-                                    </div>
-                                 )}
+{/* Sources for Generic Mode — Adaptive Reference Grid */}
+                                  {msg.mode === 'generic' && msg.sources && msg.sources.length > 0 && (() => {
+                                     const validSources = msg.sources.filter(s => !!s.url);
+                                     const count = validSources.length;
+                                     const gridClass = count === 1
+                                        ? 'grid-cols-1'
+                                        : count === 2
+                                           ? 'grid-cols-1 sm:grid-cols-2'
+                                           : count <= 4
+                                              ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2'
+                                              : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+                                     return count > 0 ? (
+                                        <div className="mt-8 pt-6 border-t border-white/[0.06]">
+                                           <div className="flex items-center gap-2.5 mb-5">
+                                              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-curo-teal/20 to-curo-accent/10 flex items-center justify-center">
+                                                 <Globe size={14} className="text-curo-teal" />
+                                              </div>
+                                              <p className="text-[11px] font-semibold text-curo-text-muted uppercase tracking-widest">
+                                                 References · {count} source{count !== 1 ? 's' : ''} cited
+                                              </p>
+                                           </div>
+                                           <div className={`grid ${gridClass} gap-3`}>
+                                              {validSources.map((src, i) => {
+                                                 const sourceNum = (src as any).index || (i + 1);
+                                                 let hostname = '';
+                                                 try { hostname = new URL(src.url).hostname.replace('www.', ''); } catch { hostname = src.url.slice(0, 30); }
+                                                 return (
+                                                    <a
+                                                       key={i}
+                                                       id={`source-${sourceNum}`}
+                                                       href={src.url}
+                                                       target="_blank"
+                                                       rel="noopener noreferrer"
+                                                       onClick={(e) => {
+                                                          e.preventDefault();
+                                                          window.open(src.url, '_blank', 'noopener,noreferrer');
+                                                       }}
+                                                       className="group block px-4 py-3.5 bg-[#0a0f1a] border border-white/[0.06] rounded-xl hover:border-curo-teal/40 hover:bg-[#0f1729] transition-all duration-300 transform hover:scale-[1.02] hover:shadow-lg hover:shadow-curo-teal/5 cursor-pointer select-none"
+                                                    >
+                                                       <div className="flex items-start gap-3">
+                                                          <div className="relative shrink-0">
+                                                             <div className="w-8 h-8 rounded-lg bg-curo-teal/10 group-hover:bg-curo-teal/20 flex items-center justify-center transition-colors text-[11px] font-bold text-curo-teal border border-curo-teal/10 group-hover:border-curo-teal/30">
+                                                                {sourceNum}
+                                                             </div>
+                                                          </div>
+                                                          <div className="overflow-hidden flex-1 min-w-0">
+                                                             <div className="flex items-center gap-2 mb-1.5">
+                                                                <img
+                                                                   src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=16`}
+                                                                   alt=""
+                                                                   className="w-3.5 h-3.5 rounded-sm opacity-60 group-hover:opacity-100 transition-opacity"
+                                                                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                                />
+                                                                <span className="text-[10px] text-curo-teal/60 group-hover:text-curo-teal truncate transition-colors font-medium">{hostname}</span>
+                                                                <ExternalLink size={10} className="text-curo-text-dim opacity-0 group-hover:opacity-80 transition-opacity ml-auto shrink-0" />
+                                                             </div>
+                                                             <p className="text-[12.5px] font-semibold text-curo-text/90 group-hover:text-curo-text leading-snug line-clamp-2 transition-colors">{src.title}</p>
+                                                             {src.snippet && <p className="text-[11px] text-curo-text-dim/80 mt-1.5 line-clamp-2 leading-relaxed">{src.snippet}</p>}
+                                                          </div>
+                                                       </div>
+                                                    </a>
+                                                 );
+                                              })}
+                                           </div>
+                                        </div>
+                                     ) : null;
+                                  })()}
                                  
                                  {/* Inline Results Dashboard for Deep Research */}
                                  {msg.mode === 'deep-research' && msg.result && (
