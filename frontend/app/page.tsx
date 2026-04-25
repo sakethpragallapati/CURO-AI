@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, User, signOut, getRedirectResult } from 'firebase/auth';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Activity, Sparkles, Brain, Search, Shield, FlaskConical, Stethoscope, ChevronRight, Zap, BarChart3, Network, LogOut, FolderOpen } from 'lucide-react';
@@ -47,26 +47,12 @@ export default function LandingPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // 1. Handle redirect results from Google Auth
-    getRedirectResult(auth).then((result) => {
-      if (result?.user) {
-        router.push('/chat');
-      }
-    }).catch((err) => {
-      console.error("Redirect auth error:", err);
-    });
-
-    // 2. Monitor auth state
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
-      // Optional: Auto-redirect if already logged in when landing
-      if (currentUser && !showAuth) {
-        // router.push('/chat'); // Uncomment if you want immediate redirect
-      }
     });
     return () => unsubscribe();
-  }, [router, showAuth]);
+  }, [router]);
 
   const handleGetStarted = () => {
     if (user) {
