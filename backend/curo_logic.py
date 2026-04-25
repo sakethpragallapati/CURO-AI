@@ -85,16 +85,27 @@ load_dotenv()
 
 # Initialize Core Models globally for the module with robust FALLBACKS for Rate Limits (429)
 primary_llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.1)
-fallback_llm_1 = ChatGroq(model_name="mixtral-8x7b-32768", temperature=0.1)
+fallback_llm_1 = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.1)
 fallback_llm_2 = ChatGroq(model_name="gemma2-9b-it", temperature=0.1)
 fallback_llm_3 = ChatGroq(model_name="llama3-70b-8192", temperature=0.1)
 llm = primary_llm.with_fallbacks([fallback_llm_1, fallback_llm_2, fallback_llm_3])
 
 # Specialized instance for Triage with JSON Mode (with fallbacks)
 triage_primary = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.3, model_kwargs={"response_format": {"type": "json_object"}})
-triage_fallback_1 = ChatGroq(model_name="mixtral-8x7b-32768", temperature=0.3, model_kwargs={"response_format": {"type": "json_object"}})
+triage_fallback_1 = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.3, model_kwargs={"response_format": {"type": "json_object"}})
 triage_fallback_2 = ChatGroq(model_name="gemma2-9b-it", temperature=0.3, model_kwargs={"response_format": {"type": "json_object"}})
 triage_llm = triage_primary.with_fallbacks([triage_fallback_1, triage_fallback_2])
+
+# Specialized instance for Knowledge Graph with JSON Mode
+kg_primary = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.1, model_kwargs={"response_format": {"type": "json_object"}})
+kg_fallback_1 = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.1, model_kwargs={"response_format": {"type": "json_object"}})
+kg_fallback_2 = ChatGroq(model_name="gemma2-9b-it", temperature=0.1, model_kwargs={"response_format": {"type": "json_object"}})
+kg_llm = kg_primary.with_fallbacks([kg_fallback_1, kg_fallback_2])
+
+# Extraction-specific LLM (using Mixtral as primary for better logic/less refusal in clinical classification)
+# Extraction-specific LLM 
+extraction_primary = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.0)
+extraction_llm = extraction_primary.with_fallbacks([fallback_llm_2, fallback_llm_3])
 
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
@@ -116,23 +127,20 @@ def fetch_and_rank_openalex(query_terms: list, email="SASRbros0705@gmail.com") -
         except Exception:
             continue
 
-        if not concept_id:
-            continue
-
         try:
+            # FIXED: OpenAlex requires all filters to be combined in a single comma-separated string!
+            filter_string = "primary_location.source.type:journal,is_paratext:false,has_abstract:true,from_publication_date:2020-01-01"
+            if concept_id:
+                filter_string = f"concepts.id:{concept_id}," + filter_string
+                
             params = {
-                "filter": (
-                    f"concepts.id:{concept_id},"
-                    "primary_location.source.type:journal,"
-                    "is_paratext:false,"
-                    "has_abstract:true,"
-                    "from_publication_date:2020-01-01"
-                ),
+                "filter": filter_string,
                 "search": term,
                 "sort": "relevance_score:desc",
                 "per_page": 20,
                 "mailto": email,
             }
+                
             works = requests.get("https://api.openalex.org/works", params=params, timeout=15).json().get("results", [])
         except Exception:
             works = []
@@ -364,23 +372,30 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
     # 1. Entity Extraction (UPDATED PROMPT)
     entity_prompt = PromptTemplate.from_template(
         "ROLE: You are an Expert Medical Diagnostician.\n"
-        "TASK: Analyze the following patient presentation and generate a standard Differential Diagnosis (DDx).\n"
-        "Output a JSON array of up to three standard, well-recognized medical conditions that best explain the symptoms.\n"
+        "TASK: Analyze the patient's presentation and generate a standard Differential Diagnosis (DDx).\n"
+        "Output a JSON array of up to three formal, well-recognized medical conditions that best explain the symptoms.\n"
         "CRITICAL RULES:\n"
-        "- DIRECT MENTIONS: If the user explicitly states they have, were diagnosed with, or are suffering from a specific disease/condition, you MUST include that exact disease as the MOST LIKELY diagnosis (the very first item in the array).\n"
-        "- Use standard medical disease names only (e.g., 'Systemic Sclerosis', 'Myasthenia Gravis', 'Achalasia').\n"
-        "- DO NOT use acronyms in parentheses (e.g., use 'Multiple Sclerosis' not 'Multiple Sclerosis (MS)').\n"
-        "- Provide base English terminology without special accented characters (e.g., 'Guillain Barre Syndrome').\n"
-        "- ACUITY FILTER: If the query contains 'Red Flag' indicators (e.g., tearing pain, asymmetric blood pressure, saddle anesthesia, sudden focal neurological deficits), you MUST prioritize high-risk, time-sensitive emergencies even if they are statistically rare.\n"
-        "- DIFFERENTIATION: Ensure the three diagnoses represent distinct clinical possibilities to allow for broad evidence retrieval.\n"
-        "- The MOST LIKELY or MOST CRITICAL diagnosis MUST be the first item in the array.\n"
+        "- IGNORE PRESCRIPTION REQUESTS: If the user asks about treatments, dosages, or antibiotics, ignore that part. Extract ONLY the underlying medical condition.\n"
+        "- TRANSLATE COLLOQUIALISMS: Never output user phrases verbatim (e.g., 'my throat infection'). You MUST translate them into formal clinical terminology (e.g., 'Acute Pharyngitis', 'Streptococcal Tonsillitis', 'Upper Respiratory Infection').\n"
+        "- DIRECT MENTIONS: If the user explicitly states a diagnosed disease, include it as the first item.\n"
+        "- The MOST LIKELY diagnosis MUST be the first item in the array.\n"
         "- Output ONLY a valid JSON array of strings.\n\n"
         "QUERY: {query}\n{demo_injection}"
     )
-    entity_chain = entity_prompt | llm | JsonOutputParser()
+    
+    # Notice we pass `user_query` directly. The LLM is smart enough to ignore the medication request based on the prompt.
+    entity_chain = entity_prompt | extraction_llm | JsonOutputParser()
+    
     try:
         clinical_terms = entity_chain.invoke({"query": user_query, "demo_injection": demo_injection})
-    except Exception:
+        
+        # Validate that the response is actually a list
+        if not clinical_terms or not isinstance(clinical_terms, list):
+            print("[!] DDx Extraction returned invalid format, falling back to query.")
+            clinical_terms = [user_query]
+            
+    except Exception as e:
+        print(f"[!] DDx Extraction failed: {e}")
         clinical_terms = [user_query]
 
     print(f"[*] DDx Extracted: {clinical_terms}")
@@ -408,9 +423,10 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
 
     # 3. Semantic Firewall
     vectorstore = Chroma.from_documents(documents, embeddings)
-    base_retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+    base_retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
     mqr = MultiQueryRetriever.from_llm(retriever=base_retriever, llm=llm)
-    embeddings_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.15)
+    # Increased threshold to be stricter against hallucinations
+    embeddings_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.22)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=embeddings_filter,
         base_retriever=mqr
@@ -418,11 +434,36 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
 
     compressed_docs = compression_retriever.invoke(user_query)
 
+    # HALLUCINATION CHECK: Check if the user query mentioned a specific substance/drug 
+    # that is NOT present in any of the retrieved literature.
+    substance_check_prompt = PromptTemplate.from_template(
+        "Extract any specific drugs, medications, or unique treatment names mentioned in this query.\n"
+        "QUERY: {query}\n"
+        "Output a JSON array of strings. If none, output []."
+    )
+    substance_check_chain = substance_check_prompt | llm | JsonOutputParser()
+    try:
+        mentioned_substances = substance_check_chain.invoke({"query": user_query})
+    except:
+        mentioned_substances = []
+
+    # If specific substances were mentioned, verify if they appear in any retrieved docs
+    unverified_substances = []
+    if mentioned_substances and compressed_docs:
+        all_text = " ".join([d.page_content for d in compressed_docs]).lower()
+        for s in mentioned_substances:
+            if s.lower() not in all_text:
+                unverified_substances.append(s)
+
     # UPDATED FALLBACK DICT
-    if not compressed_docs:
+    if not compressed_docs or (len(mentioned_substances) > 0 and len(unverified_substances) == len(mentioned_substances)):
         vectorstore.delete_collection()
+        msg = "No highly relevant medical literature matched the specific symptom profile."
+        if unverified_substances:
+            msg = f"No verified clinical literature or research papers were found for '{', '.join(unverified_substances)}'. As a safety measure, CURO AI refuses to provide guidelines for unverified substances."
+        
         return {
-            "response": "No highly relevant literature matched the specific symptom profile.", 
+            "response": msg, 
             "extracted_ddx": clinical_terms,
             "winning_diagnosis": "None",
             "abstracts": [],
@@ -488,16 +529,23 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
         "TEXT:\n{text}\n\n"
         "INSTRUCTION: Extract exact logical relationships (Triplets) linking {topic} to its Symptoms, Causes, Diagnostic Tests, and Treatments. "
         "Also link specific symptoms to treatments if applicable. DO NOT create disconnected floating nodes.\n"
+        "CRITICAL: Output ONLY a JSON object populated with ACTUAL INSTANCES from the text. DO NOT output a JSON Schema.\n"
         "FORMAT INSTRUCTIONS: {format_instructions}"
     )
     # Use StrOutputParser to intercept raw JSON for manual cleanup before strict Pydantic parsing
-    kg_chain = kg_prompt | llm | StrOutputParser()
+    kg_chain = kg_prompt | kg_llm | StrOutputParser()
     kg_data = None
     try:
         import json
-        winning_docs = [d for d in compressed_docs if d.metadata["topic"] == winning_topic]
+        winning_docs = [d for d in compressed_docs if d.metadata.get("topic") == winning_topic]
+        if not winning_docs and compressed_docs:
+            winning_docs = compressed_docs
+            
         # Trim text significantly to save tokens and prevent rate limit exhaustion
         combined_text = "\n".join([d.page_content[:600] for d in winning_docs[:2]])
+        
+        if not combined_text.strip():
+            combined_text = f"Standard medical facts and clinical pathways for {winning_topic}."
         
         raw_completion = kg_chain.invoke({
             "topic": winning_topic, 
@@ -515,6 +563,10 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
         ]
         parsed_dict["relationships"] = valid_rels
         
+        # Ensure topic exists to satisfy Pydantic validation
+        if "topic" not in parsed_dict:
+            parsed_dict["topic"] = winning_topic
+            
         # Safely hydrate Pydantic model
         kg_data_obj = KnowledgeGraphResult(**parsed_dict)
         
@@ -1283,6 +1335,29 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
 
     print(f"--- [GENERIC MODE] Deep Research Processing: {user_query} ---\n")
 
+    # --- Step 0: Clinical Entity Validation & Sanitization ---
+    # We extract real medical terms to search for, and identify suspicious entities to flag.
+    validation_prompt = PromptTemplate.from_template(
+        "ROLE: Medical Entity Auditor\n"
+        "TASK: Analyze the query: '{query}'\n"
+        "1. Identify REAL medical conditions (e.g., 'Joint Pain').\n"
+        "2. Identify SUSPICIOUS or FICTITIOUS drugs/treatments (e.g., 'CureAll-X').\n"
+        "Output ONLY a JSON object: {{\"real_terms\": [\"term1\", ...], \"suspicious_terms\": [\"term1\", ...]}}"
+    )
+    validation_chain = validation_prompt | llm | JsonOutputParser()
+    
+    try:
+        validation = validation_chain.invoke({"query": user_query})
+        real_search_query = " ".join(validation.get("real_terms", [user_query]))
+        suspicious_terms = validation.get("suspicious_terms", [])
+        print(f"[*] Validation: Real terms: {validation.get('real_terms')}, Suspicious: {suspicious_terms}")
+    except:
+        real_search_query = user_query
+        suspicious_terms = []
+
+    # Use sanitized query for actual search
+    search_target = real_search_query if real_search_query.strip() else user_query
+
     sources = []
     seen_urls = set()
     raw_results = []
@@ -1372,7 +1447,7 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         try:
             # Request a larger pool of results so we can filter for domain diversity
             response = exa.search_and_contents(
-                user_query,
+                search_target,
                 type="neural",
                 num_results=15,
                 text=True,
@@ -1484,7 +1559,9 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         "4. Do NOT use markdown headers (##). Use **bold text** for section labels.\n"
         "5. Maintain a warm, empathetic, and professional tone throughout.\n"
         "6. Do NOT fabricate information. Only cite facts found in the provided sources.\n"
-        "7. STRICT RULE: NEVER output a list of sources, URLs, or a references section at the end. Your response MUST end exactly after the medical disclaimer. The system UI will display the actual reference cards automatically.\n\n"
+        "7. SUSPICIOUS ENTITY CHECK: The user mentioned these potentially suspicious or fictitious entities: {suspicious_terms}. "
+        "If any of these are truly fictitious or have NO supporting evidence in the RESEARCHED SOURCES, you MUST explicitly state that they are unverified or non-existent medical products and advise the user to avoid them entirely. Use strong clinical reasoning.\n"
+        "8. STRICT RULE: NEVER output a list of sources, URLs, or a references section at the end. Your response MUST end exactly after the medical disclaimer. The system UI will display the actual reference cards automatically.\n\n"
         "You MUST conclude your response perfectly with this EXACT section and nothing else after it:\n"
         "**Medical Disclaimer**\n"
         "This response is for informational purposes only and is not a substitute for professional medical advice. Please consult with a healthcare professional for proper diagnosis and treatment."
@@ -1492,7 +1569,11 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
 
     try:
         chain = prompt | llm | StrOutputParser()
-        response_text = chain.invoke({"query": user_query, "context": enriched_context})
+        response_text = chain.invoke({
+            "query": user_query, 
+            "context": enriched_context,
+            "suspicious_terms": ", ".join(suspicious_terms) if suspicious_terms else "None"
+        })
 
         print(f"[*] Deep generic research response generated successfully.")
 

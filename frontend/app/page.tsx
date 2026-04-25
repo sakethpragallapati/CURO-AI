@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User, signOut, getRedirectResult } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Activity, Sparkles, Brain, Search, Shield, FlaskConical, Stethoscope, ChevronRight, Zap, BarChart3, Network, LogOut, FolderOpen } from 'lucide-react';
 import AuthModal from '../components/AuthModal';
 import StarBorder from '../components/StarBorder';
 import LogoLoop from '../components/LogoLoop';
+import Navbar from '../components/Navbar';
 
 const features = [
   { icon: Search, title: 'Evidence Retrieval', desc: 'Fetches and ranks peer-reviewed abstracts from OpenAlex in real-time, filtered by clinical authority.', color: 'curo-accent' },
@@ -46,12 +47,26 @@ export default function LandingPage() {
   const router = useRouter();
 
   useEffect(() => {
+    // 1. Handle redirect results from Google Auth
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        router.push('/chat');
+      }
+    }).catch((err) => {
+      console.error("Redirect auth error:", err);
+    });
+
+    // 2. Monitor auth state
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      // Optional: Auto-redirect if already logged in when landing
+      if (currentUser && !showAuth) {
+        // router.push('/chat'); // Uncomment if you want immediate redirect
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [router, showAuth]);
 
   const handleGetStarted = () => {
     if (user) {
@@ -80,39 +95,7 @@ export default function LandingPage() {
   return (
     <>
       <div className="min-h-screen flex flex-col relative overflow-hidden">
-        {/* Nav */}
-        <nav className="relative z-20 py-5 px-6 sm:px-10">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-curo-accent to-curo-teal flex items-center justify-center shadow-lg shadow-curo-accent/20">
-                <Activity size={20} className="text-white" />
-              </div>
-              <span className="text-xl font-bold text-white tracking-tight">CURO <span className="gradient-text">AI</span></span>
-            </div>
-            <div className="flex items-center gap-4">
-              {user ? (
-                <>
-                  <button onClick={() => router.push('/records')} className="text-sm text-curo-text-muted hover:text-curo-teal transition-colors hidden sm:block">
-                    Health Records
-                  </button>
-                  <button onClick={() => router.push('/triage')} className="text-sm text-curo-text-muted hover:text-curo-accent transition-colors hidden sm:block">
-                    Triage Assistant
-                  </button>
-                  <button onClick={() => router.push('/chat')} className="glow-btn text-sm py-2.5 px-5">
-                    Open Dashboard
-                  </button>
-                  <button onClick={async () => { await signOut(auth); setShowAuth(false); }} className="p-2.5 rounded-lg border border-curo-border hover:border-curo-rose/50 text-curo-text-dim hover:text-curo-rose transition-all flex items-center justify-center gap-2" title="Sign Out">
-                    <LogOut size={16} />
-                  </button>
-                </>
-              ) : (
-                <button onClick={() => setShowAuth(true)} className="text-sm text-curo-text-muted hover:text-white border border-curo-border rounded-lg px-4 py-2 transition-all hover:border-curo-accent/50">
-                  Sign In
-                </button>
-              )}
-            </div>
-          </div>
-        </nav>
+        <Navbar onSignInClick={() => setShowAuth(true)} />
 
         {/* Hero Section */}
         <section className="relative z-10 flex-1 flex items-center justify-center px-6 py-16 sm:py-24">

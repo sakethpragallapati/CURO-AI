@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import Navbar from './Navbar';
 
 interface StoredDocument {
   filename: string;
@@ -279,59 +280,29 @@ export default function HealthRecordsVault({ userId }: { userId: string }) {
   return (
     <div className="min-h-screen flex flex-col">
       {/* ═══ Header ═══ */}
-      <header className="sticky top-0 z-50 glass-card-strong border-t-0 border-x-0 rounded-none">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/chat')}
-                className="p-2 rounded-lg hover:bg-white/5 text-curo-text-dim hover:text-white transition-colors"
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-curo-teal to-curo-accent flex items-center justify-center">
-                <FolderOpen size={18} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-curo-text flex items-center gap-2">
-                  Health Records Vault
-                  <span className="text-[10px] text-curo-teal px-1.5 py-0.5 rounded bg-curo-teal/10 border border-curo-teal/20">
-                    RAG
-                  </span>
-                </h1>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-curo-teal animate-pulse" />
-                  <span className="text-[10px] text-curo-text-dim uppercase tracking-[0.1em]">
-                    {totalChunks > 0 ? `${documents.length} docs · ${totalChunks} chunks indexed` : 'No records uploaded'}
-                  </span>
-                </div>
-              </div>
+      <Navbar 
+        extraContent={
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-curo-teal to-curo-accent flex items-center justify-center">
+              <FolderOpen size={20} className="text-white" />
             </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/chat')}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-curo-accent/20 bg-curo-accent/5 hover:bg-curo-accent/10 text-sm text-curo-accent transition-colors"
-              >
-                <Sparkles size={16} /> Dashboard
-              </button>
-              <button
-                onClick={() => router.push('/triage')}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-curo-border bg-white/[0.02] hover:bg-white/[0.05] text-sm text-curo-text-muted transition-colors"
-              >
-                <Brain size={16} /> Triage
-              </button>
-              <button
-                onClick={() => signOut(auth)}
-                className="p-2 rounded-lg hover:bg-curo-rose/10 text-curo-text-dim hover:text-curo-rose transition-colors"
-                title="Sign Out"
-              >
-                <LogOut size={16} />
-              </button>
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                Health Records Vault
+                <span className="text-[10px] text-curo-teal px-1.5 py-0.5 rounded bg-curo-teal/10 border border-curo-teal/20">
+                  RAG
+                </span>
+              </h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-curo-teal animate-pulse" />
+                <span className="text-[10px] text-curo-text-dim uppercase tracking-wider">
+                  {totalChunks > 0 ? `${documents.length} docs · ${totalChunks} chunks` : 'Records Vault Ready'}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* ═══ Main Content ═══ */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">

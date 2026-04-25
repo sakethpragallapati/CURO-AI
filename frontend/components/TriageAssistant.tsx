@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Brain, Send, X, RefreshCw, Activity, ArrowLeft, Sparkles, LogOut, Globe, Database } from 'lucide-react';
+import { Brain, Send, X, RefreshCw, Activity, ArrowLeft, Sparkles, LogOut, Globe, Database, History } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+import Navbar from './Navbar';
 
 export default function TriageAssistant() {
   const router = useRouter();
@@ -159,55 +160,46 @@ export default function TriageAssistant() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 glass-card-strong border-t-0 border-x-0 rounded-none">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="flex justify-between items-center h-16">
+      <Navbar 
+        extraContent={
+          <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
-              <button onClick={() => router.push('/chat')} className="p-2 rounded-lg hover:bg-white/5 text-curo-text-dim hover:text-white transition-colors">
-                <ArrowLeft size={18} />
-              </button>
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-curo-accent to-curo-teal flex items-center justify-center">
-                <Brain size={18} className="text-white" />
+              <div className="w-10 h-10 rounded-xl bg-curo-accent/10 border border-curo-accent/20 flex items-center justify-center">
+                <Brain size={20} className="text-curo-accent" />
               </div>
-              <div>
-                <h1 className="text-sm font-bold text-curo-text flex items-center gap-2">
-                  Curo Assistant
+              <div className="hidden sm:block">
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  Clinical Triage
                   <span className="text-[10px] text-curo-accent px-1.5 py-0.5 rounded bg-curo-accent/10 border border-curo-accent/20">AGENTIC</span>
-                </h1>
+                </h2>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-curo-teal animate-pulse" />
-                  <span className="text-[10px] text-curo-text-dim uppercase tracking-[0.1em]">
-                    {triageFinished ? 'Interview Complete' : 'Clinical Interview in Progress'}
+                  <span className="text-[10px] text-curo-text-dim uppercase tracking-wider">
+                    {triageFinished ? 'Complete' : 'Interview in Progress'}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Progress */}
-              <div className="hidden sm:flex flex-col items-end">
-                <span className="text-[10px] uppercase font-bold text-curo-text-dim tracking-tight">Progress</span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <div className="w-24 h-1.5 rounded-full bg-curo-border overflow-hidden">
-                    <div
-                      className="h-full bg-curo-accent transition-all duration-500 ease-out rounded-full"
-                      style={{ width: `${Math.min(100, (questionCount / 5) * 100)}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-curo-accent">{Math.min(100, Math.round((questionCount / 5) * 100))}%</span>
-                </div>
+            <div className="hidden md:flex flex-col items-end">
+              <div className="flex items-center gap-3 mb-1">
+                 <span className="text-xs font-bold text-curo-text-dim tracking-tight">PROGRESS</span>
+                 <span className="text-xs font-bold text-curo-accent">{Math.min(100, Math.round((questionCount / 5) * 100))}%</span>
               </div>
-              <button onClick={handleRestart} className="p-2 rounded-lg hover:bg-white/5 text-curo-text-dim hover:text-curo-accent transition-colors" title="Restart">
-                <RefreshCw size={16} />
-              </button>
-              <div className="w-px h-5 bg-curo-border hidden sm:block mx-1"></div>
-              <button onClick={() => signOut(auth)} className="p-2 rounded-lg hover:bg-curo-rose/10 text-curo-text-dim hover:text-curo-rose transition-colors" title="Sign Out">
-                <LogOut size={16} />
-              </button>
+              <div className="w-32 h-1.5 rounded-full bg-curo-border overflow-hidden">
+                <div
+                  className="h-full bg-curo-accent transition-all duration-500 ease-out rounded-full shadow-[0_0_8px_rgba(236,72,153,0.4)]"
+                  style={{ width: `${Math.min(100, (questionCount / 5) * 100)}%` }}
+                />
+              </div>
             </div>
+
+            <button onClick={handleRestart} className="p-2.5 rounded-xl border border-curo-border bg-white/[0.02] hover:bg-white/[0.05] text-curo-text-dim hover:text-curo-accent transition-all" title="Restart">
+              <RefreshCw size={18} />
+            </button>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* Chat Area */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-6">

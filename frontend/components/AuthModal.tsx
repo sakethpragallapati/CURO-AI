@@ -4,7 +4,7 @@ import { useState } from 'react';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
   GoogleAuthProvider
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
@@ -29,7 +29,9 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
       }
       onSuccess();
     } catch (err: any) {
-      setError(err.message.replace('Firebase:', '').trim());
+      console.error("Email auth error:", err);
+      const msg = err?.message || "Authentication failed.";
+      setError(msg.replace('Firebase:', '').trim());
     } finally {
       setLoading(false);
     }
@@ -40,11 +42,13 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
     setError('');
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      onSuccess();
+      // Use redirect instead of popup to avoid Cross-Origin-Opener-Policy issues
+      await signInWithRedirect(auth, provider);
+      // Success will be handled by the redirect callback on the main page
     } catch (err: any) {
-      setError(err.message.replace('Firebase:', '').trim());
-    } finally {
+      console.error("Google auth error:", err);
+      const msg = err?.message || "Google authentication failed.";
+      setError(msg.replace('Firebase:', '').trim());
       setLoading(false);
     }
   };

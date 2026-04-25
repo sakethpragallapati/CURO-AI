@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ResultsDashboard from './ResultsDashboard';
 import HistorySidebar from './HistorySidebar';
-import { Send, Activity, Sparkles, Brain, Search, BookOpen, FlaskConical, History, LogOut, Mic, MicOff, ChevronDown, ChevronUp, UserSquare2, RefreshCw, FolderOpen, Database, Plus, Paperclip, AlertCircle, CheckCircle2, ChevronRight, File, Pill, ExternalLink, Globe } from 'lucide-react';
+import Navbar from './Navbar';
+import { Send, Activity, Sparkles, Brain, Search, BookOpen, FlaskConical, History, LogOut, Mic, MicOff, ChevronDown, ChevronUp, UserSquare2, RefreshCw, FolderOpen, Database, Plus, Paperclip, AlertCircle, CheckCircle2, ChevronRight, File, Pill, ExternalLink, Globe, Copy, Check } from 'lucide-react';
 import VoiceVisualizer from './VoiceVisualizer';
 import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
@@ -111,8 +112,8 @@ function parseResponse(text: string) {
     if (h2Match) {
       elements.push(
         <div key={`sec-${elementKey++}`} className="flex items-center gap-2.5 mt-7 mb-3 first:mt-1">
-          <div className="w-1 h-5 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
-          <h3 className="text-[15px] font-bold text-curo-text tracking-tight">{renderInlineText(h2Match[1], `h-${lineIdx}`)}</h3>
+          <div className="w-1 h-6 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
+          <h3 className="text-xl font-bold text-curo-text tracking-tight">{renderInlineText(h2Match[1], `h-${lineIdx}`)}</h3>
         </div>
       );
       lineIdx++;
@@ -124,8 +125,8 @@ function parseResponse(text: string) {
     if (headerMatch && trimmed.length < 100) {
       elements.push(
         <div key={`sec-${elementKey++}`} className="flex items-center gap-2.5 mt-7 mb-3 first:mt-1">
-          <div className="w-1 h-5 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
-          <h3 className="text-[15px] font-bold text-curo-text tracking-tight">{headerMatch[1].trim()}</h3>
+          <div className="w-1 h-6 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
+          <h3 className="text-xl font-bold text-curo-text tracking-tight">{headerMatch[1].trim()}</h3>
         </div>
       );
       lineIdx++;
@@ -149,7 +150,7 @@ function parseResponse(text: string) {
         elements.push(
           <ul key={`ul-${elementKey++}`} className="space-y-2.5 mb-5 ml-0.5">
             {items.map((item, j) => (
-              <li key={j} className="flex items-start gap-2.5 text-[14px] text-curo-text/85 leading-relaxed">
+              <li key={j} className="flex items-start gap-2.5 text-lg text-curo-text/85 leading-relaxed">
                 <span className="mt-[9px] w-1.5 h-1.5 rounded-full bg-curo-teal/50 shrink-0" />
                 <span className="flex-1">{renderInlineText(item, `uli-${elementKey}-${j}`)}</span>
               </li>
@@ -177,7 +178,7 @@ function parseResponse(text: string) {
         elements.push(
           <ol key={`ol-${elementKey++}`} className="space-y-2.5 mb-5 ml-0.5">
             {items.map((item, j) => (
-              <li key={j} className="flex items-start gap-3 text-[14px] text-curo-text/85 leading-relaxed">
+              <li key={j} className="flex items-start gap-3 text-lg text-curo-text/85 leading-relaxed">
                 <span className="mt-0.5 min-w-[22px] h-[22px] rounded-full bg-curo-accent/10 flex items-center justify-center text-[11px] font-bold text-curo-accent shrink-0">{j + 1}</span>
                 <span className="flex-1">{renderInlineText(item, `oli-${elementKey}-${j}`)}</span>
               </li>
@@ -215,7 +216,7 @@ function parseResponse(text: string) {
         );
       } else {
         elements.push(
-          <p key={`p-${elementKey++}`} className="mb-3.5 leading-[1.85] text-[14px] text-curo-text/85">
+          <p key={`p-${elementKey++}`} className="mb-3.5 leading-[1.85] text-lg text-curo-text/85">
             {renderInlineText(paraText, `p-${elementKey}`)}
           </p>
         );
@@ -224,6 +225,30 @@ function parseResponse(text: string) {
   }
 
   return elements.length > 0 ? elements : null;
+}
+
+function CopyButton({ text, className = "" }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  
+  return (
+    <button 
+      onClick={handleCopy}
+      className={`flex items-center gap-1.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.1] text-curo-text-dim hover:text-white transition-all group/copy ${className}`}
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <Check size={16} className="text-curo-teal animate-in zoom-in duration-200" />
+      ) : (
+        <Copy size={16} className="opacity-40 group-hover/copy:opacity-100 transition-opacity" />
+      )}
+    </button>
+  );
 }
 
 export default function ChatInterface() {
@@ -626,34 +651,26 @@ export default function ChatInterface() {
 
   return (
     <div className="flex flex-col h-screen bg-curo-bg overflow-hidden relative">
-      {/* Header */}
-      <header className="flex-shrink-0 z-20 glass-card-strong border-t-0 border-x-0 rounded-none h-14 flex items-center justify-between px-4 sm:px-8">
-         <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => router.push('/')}>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-curo-accent to-curo-teal flex items-center justify-center">
-              <Activity size={16} className="text-white" />
-            </div>
-            <h1 className="text-base font-bold gradient-text">CURO AI</h1>
-         </div>
-         <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/records')} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-curo-teal/20 bg-curo-teal/5 hover:bg-curo-teal/10 text-xs text-curo-teal transition-colors">
-              <FolderOpen size={14} /> Records
-              {recordsCount > 0 && <span className="bg-curo-teal/20 text-curo-teal px-1.5 py-0.5 rounded-full text-[10px]">{recordsCount} chunks</span>}
-            </button>
-            <button onClick={() => router.push('/triage')} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-curo-accent/20 bg-curo-accent/5 hover:bg-curo-accent/10 text-xs text-curo-accent transition-colors">
-              <Brain size={14} /> Curo Assistant
-            </button>
-            <button onClick={() => setIsSidebarOpen(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-curo-border bg-white/[0.02] hover:bg-white/[0.05] text-xs text-curo-text-muted hover:text-curo-text transition-colors">
-              <History size={14} /> History
-            </button>
-            <button onClick={() => auth.signOut()} className="flex items-center justify-center w-8 h-8 rounded-lg bg-curo-rose/10 text-curo-rose hover:bg-curo-rose/20 transition-colors">
-              <LogOut size={14} />
-            </button>
-         </div>
-      </header>
+      {/* Universal Navbar */}
+      <Navbar 
+        extraContent={
+          <div className="flex items-center gap-3">
+             <button 
+              onClick={() => setIsSidebarOpen(true)} 
+              className="flex items-center gap-2.5 px-4 py-2 rounded-xl border border-curo-border bg-white/[0.02] hover:bg-white/[0.05] text-base font-medium text-curo-text-muted hover:text-white transition-all shadow-sm"
+             >
+               <History size={18} /> 
+               <span>History</span>
+             </button>
+          </div>
+        }
+      />
+
+
 
       {/* Main Chat Area */}
       <div className="flex-1 overflow-y-auto w-full scrollbar-none">
-         <div className="max-w-4xl mx-auto px-4 py-8 pb-48">
+         <div className="w-full max-w-[95%] 2xl:max-w-[1600px] mx-auto px-4 sm:px-8 py-8 pb-48">
             {messages.length === 0 ? (
                <div className="flex flex-col items-center justify-center h-[60vh] text-center px-4 animate-fade-in">
                   <div className="w-16 h-16 rounded-3xl bg-curo-bg border border-curo-border flex items-center justify-center mb-6 shadow-glow relative overflow-hidden group">
@@ -668,12 +685,12 @@ export default function ChatInterface() {
                      <button onClick={() => { setMode('generic'); setQuery('What are the best home remedies for a severe headache?'); }} className="p-4 rounded-2xl border border-curo-border bg-white/[0.02] hover:bg-white/[0.04] text-left transition-colors">
                         <Pill size={16} className="text-curo-teal mb-2" />
                         <p className="text-sm text-curo-text font-medium">Home remedies for headache</p>
-                        <p className="text-xs text-curo-text-dim mt-1">Generic Mode lookup</p>
+                        <p className="text-sm text-curo-text-dim mt-1">Generic Mode lookup</p>
                      </button>
                      <button onClick={() => { setMode('deep-research'); setQuery('A 45yo male presents with acute chest pain radiating to the jaw...'); }} className="p-4 rounded-2xl border border-curo-border bg-white/[0.02] hover:bg-white/[0.04] text-left transition-colors">
                         <Brain size={16} className="text-curo-purple mb-2" />
                         <p className="text-sm text-curo-text font-medium">Analyze complex presentation</p>
-                        <p className="text-xs text-curo-text-dim mt-1">Deep Research pipeline</p>
+                        <p className="text-sm text-curo-text-dim mt-1">Deep Research pipeline</p>
                      </button>
                   </div>
                </div>
@@ -690,7 +707,12 @@ export default function ChatInterface() {
                            
                            {/* User Message */}
                            {msg.role === 'user' && (
-                              <p className="text-curo-text text-[15px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                              <div className="relative group/user">
+                                 <p className="text-curo-text text-lg leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                 <div className="absolute -left-12 top-0 opacity-0 group-hover/user:opacity-100 transition-opacity">
+                                    <CopyButton text={msg.content || ''} />
+                                 </div>
+                              </div>
                            )}
 
                            {/* Assistant Loading State */}
@@ -717,7 +739,10 @@ export default function ChatInterface() {
 
                            {/* Assistant Content */}
                            {msg.role === 'assistant' && !msg.isLoading && !msg.error && (
-                              <div className="space-y-4 pt-1 w-full">
+                              <div className="space-y-4 pt-1 w-full relative group/assistant">
+                                 <div className="absolute -right-12 top-0 opacity-0 group-hover/assistant:opacity-100 transition-opacity">
+                                    <CopyButton text={msg.result?.response || msg.content || ''} />
+                                 </div>
                                  {msg.content && !msg.result && (
                                     <div className="max-w-none">
                                        {parseResponse(msg.content)}
@@ -794,7 +819,7 @@ export default function ChatInterface() {
                                  
                                  {/* Inline Results Dashboard for Deep Research */}
                                  {msg.mode === 'deep-research' && msg.result && (
-                                    <div className="w-full mt-2 bg-[#0a0f18] border border-curo-border rounded-2xl overflow-hidden shadow-2xl pb-4">
+                                    <div className="w-full mt-4">
                                        <ResultsDashboard 
                                           result={msg.result} 
                                           onBack={() => {}} 
@@ -817,41 +842,7 @@ export default function ChatInterface() {
       {/* Sticky Bottom Input Area */}
       <div className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-[#060A14] via-[#060A14] to-transparent pt-12 pb-6 px-4">
          <div className="max-w-3xl mx-auto">
-            {/* Vitals Panel (Only in deep research) */}
-            {mode === 'deep-research' && (
-               <div className="mb-3 ml-2">
-                  <button 
-                     onClick={() => setIsVitalsOpen(!isVitalsOpen)}
-                     className="flex items-center gap-2 text-xs font-medium text-curo-text-dim hover:text-curo-accent transition-colors bg-[#0d1324] px-4 py-2 rounded-t-xl border border-b-0 border-curo-border"
-                  >
-                     <UserSquare2 size={14} /> Demographics & Vitals {isVitalsOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-                  </button>
-                  {isVitalsOpen && (
-                     <div className="bg-[#0b0f19] border border-curo-border rounded-xl rounded-tl-none p-5 grid grid-cols-2 sm:grid-cols-4 gap-4 shadow-xl mb-4 animate-fade-in relative z-20">
-                        <div>
-                           <label className="block text-[10px] uppercase font-bold text-curo-text-dim mb-1">Age</label>
-                           <input type="number" placeholder="e.g. 65" className="w-full bg-[#141b2a] border border-curo-border rounded-lg p-2 text-xs text-curo-text focus:border-curo-accent outline-none" value={age} onChange={e => setAge(e.target.value)} />
-                        </div>
-                        <div>
-                           <label className="block text-[10px] uppercase font-bold text-curo-text-dim mb-1">Sex</label>
-                           <select className="w-full bg-[#141b2a] border border-curo-border rounded-lg p-2 text-xs text-curo-text focus:border-curo-accent outline-none appearance-none" value={sex} onChange={e => setSex(e.target.value)}>
-                              <option>Not specified</option>
-                              <option>Male</option>
-                              <option>Female</option>
-                           </select>
-                        </div>
-                        <div>
-                           <label className="block text-[10px] uppercase font-bold text-curo-text-dim mb-1">Heart (bpm)</label>
-                           <input type="number" placeholder="e.g. 110" className="w-full bg-[#141b2a] border border-curo-border rounded-lg p-2 text-xs text-curo-text focus:border-curo-accent outline-none" value={heartRate} onChange={e => setHeartRate(e.target.value)} />
-                        </div>
-                        <div>
-                           <label className="block text-[10px] uppercase font-bold text-curo-text-dim mb-1">BP (mmHg)</label>
-                           <input type="text" placeholder="e.g. 140/90" className="w-full bg-[#141b2a] border border-curo-border rounded-lg p-2 text-xs text-curo-text focus:border-curo-accent outline-none" value={bloodPressure} onChange={e => setBloodPressure(e.target.value)} />
-                        </div>
-                     </div>
-                  )}
-               </div>
-            )}
+
 
             {/* Input Container */}
             <div className="relative bg-[#0F1523] border border-curo-border rounded-[24px] shadow-2xl transition-all focus-within:border-curo-accent/50 focus-within:ring-2 focus-within:ring-curo-accent/20 overflow-visible z-30">

@@ -15,6 +15,10 @@ import {
   RefreshCw,
   Send,
   History,
+  Search,
+  ExternalLink,
+  Download,
+  Check,
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -91,7 +95,7 @@ function parseResponse(text: string) {
     if (/^\d+\.\s/.test(p.trim())) {
       const items = p.split(/\n/).filter(Boolean);
       return (
-        <ol key={i} className="list-decimal list-inside space-y-1.5 mb-4 text-curo-text/90">
+        <ol key={i} className="list-decimal list-inside space-y-1.5 mb-4 text-curo-text/90 text-lg">
           {items.map((item, j) => (
             <li key={j} className="leading-relaxed">
               {item.replace(/^\d+\.\s*/, '')}
@@ -104,7 +108,7 @@ function parseResponse(text: string) {
     if (/^[-•]\s/.test(p.trim())) {
       const items = p.split(/\n/).filter(Boolean);
       return (
-        <ul key={i} className="list-disc list-inside space-y-1.5 mb-4 text-curo-text/90">
+        <ul key={i} className="list-disc list-inside space-y-1.5 mb-4 text-curo-text/90 text-lg">
           {items.map((item, j) => (
             <li key={j} className="leading-relaxed">
               {item.replace(/^[-•]\s*/, '')}
@@ -116,7 +120,7 @@ function parseResponse(text: string) {
     // Bold markers
     const parts = p.split(/(\*\*.*?\*\*)/g);
     return (
-      <p key={i} className="mb-4 leading-relaxed text-curo-text/90">
+      <p key={i} className="mb-4 leading-relaxed text-curo-text/90 text-lg">
         {parts.map((part, j) =>
           part.startsWith('**') && part.endsWith('**') ? (
             <strong key={j} className="text-curo-text font-semibold">
@@ -148,7 +152,7 @@ function AbstractAccordion({ title, abstract, url, index }: { title: string; abs
           <FileText size={14} className="text-curo-teal" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-curo-text leading-snug pr-6">{title}</p>
+          <p className="text-lg font-bold text-curo-text leading-snug pr-6">{title}</p>
         </div>
         {open ? (
           <ChevronUp size={16} className="text-curo-text-dim shrink-0 mt-1" />
@@ -159,7 +163,7 @@ function AbstractAccordion({ title, abstract, url, index }: { title: string; abs
       {open && (
         <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-0 animate-fade-in">
           <div className="pl-10">
-            <div className="text-sm text-curo-text-muted">{parseResponse(abstract)}</div>
+            <div className="text-lg text-curo-text-muted leading-relaxed">{parseResponse(abstract)}</div>
             {url && (
               <a 
                 href={url} 
@@ -237,6 +241,7 @@ function getNodeSize(label: string, winningDiagnosis: string) {
 export default function ResultsDashboard({ result, sessionId, initialMessages, userQuery, userId, isHistoryView, hideChat, onBack, onNodeClick }: ResultsDashboardProps) {
   const { displayed, done, skipToEnd } = useTypewriter(result.response, 1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fgRef = useRef<any>(null);
   const [dims, setDims] = useState({ width: 0, height: 0 });
 
   // Automatically skip the typewriter animation if this is a pre-loaded history record
@@ -246,7 +251,6 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
     }
   }, [isHistoryView, skipToEnd]);
 
-  // Handle graph wrapper resizing
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -258,6 +262,37 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+  const handleDownloadGraph = () => {
+    const canvas = containerRef.current?.querySelector('canvas');
+    if (!canvas) return;
+    
+    try {
+      // Create a temporary canvas to draw the background and the graph
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = (canvas as HTMLCanvasElement).width;
+      tempCanvas.height = (canvas as HTMLCanvasElement).height;
+      const ctx = tempCanvas.getContext('2d');
+      
+      if (ctx) {
+        // 1. Fill with the dark background color (#060a14)
+        ctx.fillStyle = '#060a14';
+        ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // 2. Draw the graph canvas on top
+        ctx.drawImage(canvas as HTMLCanvasElement, 0, 0);
+        
+        // 3. Download the result
+        const link = document.createElement('a');
+        link.download = `curo-knowledge-graph-${result.winning_diagnosis.toLowerCase().replace(/\s+/g, '-')}.png`;
+        link.href = tempCanvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (err) {
+      console.error("Failed to download graph:", err);
+    }
+  };
 
 
   // Follow-up Chat State
@@ -359,12 +394,13 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
           <div className="glass-card-strong p-6 sm:p-8">
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
+              <div className="w-1 h-6 rounded-full bg-gradient-to-b from-curo-accent to-curo-teal shrink-0" />
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-curo-accent to-curo-teal flex items-center justify-center">
                 <Stethoscope size={20} className="text-white" />
               </div>
               <div>
                 <h2 className="text-lg font-bold text-curo-text">Clinical Analysis</h2>
-                <p className="text-xs text-curo-text-dim">Powered by CURO RAG Pipeline</p>
+                <p className="text-sm text-curo-text-dim">Powered by CURO RAG Pipeline</p>
               </div>
             </div>
 
@@ -376,7 +412,7 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
             >
               <div className="prose-sm">
                 {done ? parseResponse(displayed) : (
-                  <p className="leading-relaxed text-curo-text/90">
+                  <p className="leading-relaxed text-curo-text/90 text-lg">
                     {displayed}
                     <span className="typewriter-cursor" />
                   </p>
@@ -454,7 +490,7 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
             <div className="relative">
               <div className="flex items-center gap-2 mb-3">
                 <Award size={16} className="text-curo-accent" />
-                <h3 className="text-xs font-semibold text-curo-text-muted uppercase tracking-wider">
+                <h3 className="text-sm font-semibold text-curo-text-muted uppercase tracking-wider">
                   Primary Diagnosis
                 </h3>
               </div>
@@ -469,7 +505,7 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Shield size={16} className="text-curo-purple" />
-                <h3 className="text-xs font-semibold text-curo-text-muted uppercase tracking-wider">
+                <h3 className="text-sm font-semibold text-curo-text-muted uppercase tracking-wider">
                   Differential Diagnosis
                 </h3>
               </div>
@@ -485,28 +521,32 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
               {result.extracted_ddx.map((dx, i) => {
                 const isWinner = dx === result.winning_diagnosis;
                 return (
-                  <div
+                  <a
                     key={i}
-                    className={`flex items-center gap-3 p-3 rounded-lg transition-all animate-slide-in-right ${
+                    href={`https://www.google.com/search?q=${encodeURIComponent(dx)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group flex items-center gap-3 p-3 rounded-lg transition-all animate-slide-in-right cursor-pointer hover:shadow-lg hover:scale-[1.02] ${
                       isWinner
-                        ? 'bg-curo-accent/10 border border-curo-accent/30'
-                        : 'bg-white/[0.03] border border-curo-border'
+                        ? 'bg-curo-accent/10 border border-curo-accent/30 hover:border-curo-accent'
+                        : 'bg-white/[0.03] border border-curo-border hover:border-curo-teal/50 hover:bg-[#0f1729]'
                     }`}
                     style={{ animationDelay: `${i * 0.15}s`, opacity: 0 }}
                   >
                     <span
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
                         isWinner
                           ? 'bg-curo-accent/20 text-curo-accent'
-                          : 'bg-curo-border text-curo-text-dim'
+                          : 'bg-curo-border text-curo-text-dim group-hover:bg-curo-teal/20 group-hover:text-curo-teal'
                       }`}
                     >
                       {i + 1}
                     </span>
-                    <span className={`text-sm font-medium ${isWinner ? 'text-curo-accent' : 'text-curo-text-muted'}`}>
+                    <span className={`text-base font-medium transition-colors ${isWinner ? 'text-curo-accent' : 'text-curo-text-muted group-hover:text-curo-text'}`}>
                       {dx}
                     </span>
-                  </div>
+                    <Search size={14} className={`ml-auto opacity-0 group-hover:opacity-100 transition-opacity ${isWinner ? 'text-curo-accent' : 'text-curo-teal'}`} />
+                  </a>
                 );
               })}
             </div>
@@ -523,7 +563,7 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
             </div>
             <div>
               <h2 className="text-lg font-bold text-curo-text">Knowledge Graph</h2>
-              <p className="text-xs text-curo-text-dim">Clinical entity relationships extracted from medical literature</p>
+              <p className="text-sm text-curo-text-dim">Clinical entity relationships extracted from medical literature</p>
             </div>
           </div>
 
@@ -547,19 +587,32 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
             </div>
           </div>
 
-          <div className="h-[450px] sm:h-[550px] w-full rounded-xl border border-curo-border bg-[#060a14] relative overflow-hidden" ref={containerRef}>
+          <div className="h-[600px] sm:h-[750px] lg:h-[850px] w-full rounded-xl border border-curo-border bg-[#060a14] relative overflow-hidden" ref={containerRef}>
             {/* Graph stats overlay */}
-            <div className="absolute top-3 right-3 z-10 flex items-center gap-2 bg-[#060a14]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-curo-border text-[10px] text-curo-text-dim shadow-lg">
-              <span>{graphData.nodes.length} nodes</span>
-              <span>·</span>
-              <span>{graphData.links.length} relations</span>
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-[#060a14]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-curo-border text-[10px] text-curo-text-dim shadow-lg">
+                <span>{graphData.nodes.length} nodes</span>
+                <span>·</span>
+                <span>{graphData.links.length} relations</span>
+              </div>
+              <button 
+                onClick={handleDownloadGraph}
+                className="flex items-center gap-2 bg-curo-teal/10 hover:bg-curo-teal/20 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-curo-teal/30 text-[10px] text-curo-teal font-bold shadow-lg transition-all active:scale-95"
+                title="Download Knowledge Graph as PNG"
+              >
+                <Download size={12} />
+                <span>SAVE PNG</span>
+              </button>
             </div>
             
             {dims.width > 0 && (
               <ForceGraph2D
+                onRef={(inst: any) => { fgRef.current = inst; }}
                 width={dims.width}
                 height={dims.height}
                 graphData={graphData}
+                cooldownTicks={100}
+                onEngineStop={() => fgRef.current?.zoomToFit(400, 50)}
                 nodeLabel="name"
                 nodeColor="color"
                 nodeRelSize={4}
@@ -657,8 +710,8 @@ export default function ResultsDashboard({ result, sessionId, initialMessages, u
               <BookOpen size={20} className="text-curo-teal" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-curo-text">Retrieved Literature</h2>
-              <p className="text-xs text-curo-text-dim">
+              <h2 className="text-xl font-bold text-white">Retrieved Literature</h2>
+              <p className="text-sm text-curo-text-dim">
                 {result.abstracts.length} relevant abstract{result.abstracts.length !== 1 ? 's' : ''} from OpenAlex
               </p>
             </div>
