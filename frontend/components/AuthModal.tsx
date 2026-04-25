@@ -4,7 +4,7 @@ import { useState } from 'react';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithRedirect,
+  signInWithPopup,
   GoogleAuthProvider
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
@@ -42,11 +42,15 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
     setError('');
     try {
       const provider = new GoogleAuthProvider();
-      // Use redirect instead of popup to avoid Cross-Origin-Opener-Policy issues
-      await signInWithRedirect(auth, provider);
-      // Success will be handled by the redirect callback on the main page
+      await signInWithPopup(auth, provider);
+      onSuccess();
     } catch (err: any) {
       console.error("Google auth error:", err);
+      // Ignore popup-closed-by-user errors (user clicked X on the popup)
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setLoading(false);
+        return;
+      }
       const msg = err?.message || "Google authentication failed.";
       setError(msg.replace('Firebase:', '').trim());
       setLoading(false);
