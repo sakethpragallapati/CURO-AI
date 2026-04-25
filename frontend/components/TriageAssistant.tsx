@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Brain, Send, X, RefreshCw, Activity, ArrowLeft, Sparkles, LogOut } from 'lucide-react';
+import { Brain, Send, X, RefreshCw, Activity, ArrowLeft, Sparkles, LogOut, Globe, Database } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 
@@ -141,9 +141,9 @@ export default function TriageAssistant() {
     }
   };
 
-  const handleAnalyze = () => {
-    // Navigate to chat with the summary pre-filled as query
-    const params = new URLSearchParams({ q: finalSummary });
+  const handleAnalyze = (selectedMode: 'generic' | 'deep-research') => {
+    // Navigate to chat with the summary and selected mode
+    const params = new URLSearchParams({ q: finalSummary, mode: selectedMode });
     router.push(`/chat?${params.toString()}`);
   };
 
@@ -251,49 +251,59 @@ export default function TriageAssistant() {
       <div className="sticky bottom-0 glass-card-strong border-b-0 border-x-0 rounded-none">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-5">
           {triageFinished ? (
-            <div className="flex flex-col sm:flex-row items-center gap-3 animate-fade-in">
-              <button onClick={handleAnalyze} className="glow-btn flex-1 w-full sm:w-auto flex items-center justify-center gap-2.5 py-3.5">
-                <Sparkles size={18} />
-                Analyze with CURO AI
-              </button>
-              <button onClick={handleRestart} className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl border border-curo-border bg-white/[0.02] text-curo-text-muted hover:text-curo-text hover:bg-white/[0.05] transition-all w-full sm:w-auto">
-                <RefreshCw size={16} />
-                Start Over
-              </button>
-            </div>
-          ) : isOtherSpecifying || (!triageLoading && triageMessages.length > 0 && !triageMessages[triageMessages.length - 1]?.options) ? (
-            <form onSubmit={handleOtherSubmit} className="flex gap-3 animate-fade-in">
-              <input
-                autoFocus
-                type="text"
-                value={triageInput}
-                onChange={(e) => setTriageInput(e.target.value)}
-                placeholder="Type your response here..."
-                className="flex-1 curo-input text-sm px-4 h-12"
-              />
-              <button
-                type="submit"
-                disabled={!triageInput.trim() || triageLoading}
-                className="w-12 h-12 rounded-xl bg-curo-accent flex items-center justify-center text-white disabled:opacity-50 transition-all shadow-lg shadow-curo-accent/20 hover:scale-105 active:scale-95"
-              >
-                {triageLoading ? <RefreshCw size={18} className="animate-spin" /> : <Send size={18} />}
-              </button>
-            </form>
-          ) : !triageLoading && triageMessages[triageMessages.length - 1]?.options ? (
-            <div className="flex flex-wrap gap-2.5 justify-center animate-fade-in">
-              {triageMessages[triageMessages.length - 1].options?.map((opt, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleTriageSelect(opt)}
-                  className={`px-5 py-2.5 rounded-full border text-sm font-medium transition-all hover:scale-105 active:scale-95 ${
-                    opt === 'Other (please specify)'
-                      ? 'border-curo-purple/30 bg-curo-purple/5 hover:bg-curo-purple hover:text-white text-curo-purple hover:shadow-lg hover:shadow-curo-purple/10'
-                      : 'border-curo-accent/30 bg-curo-accent/5 hover:bg-curo-accent hover:text-white text-curo-accent hover:shadow-lg hover:shadow-curo-accent/10'
-                  }`}
-                >
-                  {opt}
+            <div className="flex flex-col animate-fade-in gap-3">
+              <p className="text-sm text-center text-curo-text-dim mb-1">How would you like to analyze this summary?</p>
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button onClick={() => handleAnalyze('generic')} className="flex-1 w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl border border-curo-accent/30 bg-curo-accent/10 text-curo-accent hover:bg-curo-accent hover:text-white transition-all shadow-lg shadow-curo-accent/5">
+                  <Globe size={18} />
+                  Generic Web Research
                 </button>
-              ))}
+                <button onClick={() => handleAnalyze('deep-research')} className="glow-btn flex-1 w-full flex items-center justify-center gap-2.5 py-3.5">
+                  <Database size={18} />
+                  Deep Vault Research
+                </button>
+                <button onClick={handleRestart} className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl border border-curo-border bg-white/[0.02] text-curo-text-muted hover:text-curo-text hover:bg-white/[0.05] transition-all w-full sm:w-auto mt-2 sm:mt-0">
+                  <RefreshCw size={16} />
+                </button>
+              </div>
+            </div>
+          ) : !triageLoading && triageMessages.length > 0 ? (
+            <div className="flex flex-col gap-4 animate-fade-in w-full">
+              {/* Options Row (if any, excluding 'Other') */}
+              {triageMessages[triageMessages.length - 1].options && (
+                <div className="flex flex-wrap gap-2.5 justify-center">
+                  {triageMessages[triageMessages.length - 1].options
+                    ?.filter(opt => !opt.toLowerCase().includes('other (please specify)'))
+                    .map((opt, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleTriageSelect(opt)}
+                        className={`px-5 py-2.5 rounded-full border text-sm font-medium transition-all hover:scale-105 active:scale-95 border-curo-accent/30 bg-curo-accent/5 hover:bg-curo-accent hover:text-white text-curo-accent hover:shadow-lg hover:shadow-curo-accent/10`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                </div>
+              )}
+              
+              {/* Always-visible text input form */}
+              <form onSubmit={handleOtherSubmit} className="flex gap-3 w-full">
+                <input
+                  autoFocus
+                  type="text"
+                  value={triageInput}
+                  onChange={(e) => setTriageInput(e.target.value)}
+                  placeholder="Type your own response here..."
+                  className="flex-1 curo-input text-sm px-4 h-12"
+                />
+                <button
+                  type="submit"
+                  disabled={!triageInput.trim() || triageLoading}
+                  className="w-12 h-12 rounded-xl bg-curo-accent flex items-center justify-center text-white disabled:opacity-50 transition-all shadow-lg shadow-curo-accent/20 hover:scale-105 active:scale-95"
+                >
+                  <Send size={18} />
+                </button>
+              </form>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 animate-pulse">

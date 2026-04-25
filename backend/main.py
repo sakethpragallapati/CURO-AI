@@ -84,7 +84,7 @@ def analyze_symptoms(request: SymptomRequest):
         
     try:
         # Run the LangChain logic
-        demography_dict = request.demography.dict(exclude_none=True) if request.demography else None
+        demography_dict = request.demography.model_dump(exclude_none=True) if request.demography else None
         result = process_curo_query(request.query, demography_dict, request.user_id)
         return result
     except Exception as e:

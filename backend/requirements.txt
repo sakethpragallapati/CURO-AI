@@ -22,4 +22,4 @@ easyocr
 Pillow
 langchain-text-splitters
 python-multipart
-duckduckgo-search
+exa_py

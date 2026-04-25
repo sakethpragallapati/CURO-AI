@@ -294,10 +294,12 @@ export default function ChatInterface() {
   // Initial redirect query parsing (Triage assistant)
   useEffect(() => {
     const q = searchParams.get('q');
+    const m = searchParams.get('mode') as 'generic' | 'deep-research';
     if (q && !autoRunDone) {
       setQuery(q);
+      if (m) setMode(m);
       setAutoRunDone(true);
-      setTimeout(() => handleSendMessage(undefined, q), 500);
+      setTimeout(() => handleSendMessage(undefined, q, m || 'generic'), 500);
     }
   }, [searchParams, autoRunDone]);
 
@@ -476,9 +478,10 @@ export default function ChatInterface() {
     }
   };
 
-  const handleSendMessage = async (e?: React.FormEvent, overrideQuery?: string) => {
+  const handleSendMessage = async (e?: React.FormEvent, overrideQuery?: string, overrideMode?: 'generic' | 'deep-research') => {
     if (e) e.preventDefault();
     const targetQuery = (overrideQuery || query).trim();
+    const currentMode = overrideMode || mode;
     if (!targetQuery || loading || isTranscribing) return;
 
     setQuery('');
@@ -491,14 +494,14 @@ export default function ChatInterface() {
       ...messages,
       { id: newMsgId, role: 'user', content: targetQuery }
     ];
-    setMessages([...newMessages, { id: loadingMsgId, role: 'assistant', isLoading: true, mode }]);
+    setMessages([...newMessages, { id: loadingMsgId, role: 'assistant', isLoading: true, mode: currentMode }]);
 
     try {
       let endpoint = '';
       let payload: any = {};
       let isFollowUp = false;
 
-      if (mode === 'generic') {
+      if (currentMode === 'generic') {
         endpoint = 'http://127.0.0.1:8000/api/generic-analyze';
         payload = { query: targetQuery, user_id: auth.currentUser?.uid };
       } else {

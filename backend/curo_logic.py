@@ -46,10 +46,10 @@ class TriageInteraction(BaseModel):
                 # Ensure options exist
                 options = values.get('options')
                 if not options or len(options) == 0:
-                    values['options'] = ["Other (please specify)"]
+                    values['options'] = ["Not sure", "I can't tell"]
                 # Ensure question exists
                 if not values.get('question'):
-                    values['question'] = "Thank you for that information. Could you tell me a bit more about what you're experiencing?"
+                    values['question'] = "Could you elaborate a bit more on how this has been feeling?"
             else:
                 # Ensure summary exists if finished
                 if not values.get('summary'):
@@ -219,8 +219,11 @@ def update_neo4j_graph(kg_data: dict):
                     
         return f"KG updated for topic: {topic_name}"
     except Exception as e:
-        # Check for specific Neo4j Forbidden/Security/ReadOnly errors to fail silently
         err_str = str(e).lower()
+        if "11001" in err_str or "getaddrinfo" in err_str:
+            print("[*] Neo4j Aura is paused (Free tier). Bypassing external DB and using Local Graph Builder safely.")
+            return "KG Update Skipped (Neo4j Aura Paused)"
+        # Check for specific Neo4j Forbidden/Security/ReadOnly errors to fail silently
         if "forbidden" in err_str or "security" in err_str or "read-only" in err_str:
             print(f"[!] Neo4j Write Restricted (Aura Restriction): {str(e)[:100]}")
             return "KG Update Skipped (Standard write attempt failed)"
@@ -487,17 +490,33 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
         "Also link specific symptoms to treatments if applicable. DO NOT create disconnected floating nodes.\n"
         "FORMAT INSTRUCTIONS: {format_instructions}"
     )
-    kg_chain = kg_prompt | llm | kg_parser
+    # Use StrOutputParser to intercept raw JSON for manual cleanup before strict Pydantic parsing
+    kg_chain = kg_prompt | llm | StrOutputParser()
     kg_data = None
     try:
+        import json
         winning_docs = [d for d in compressed_docs if d.metadata["topic"] == winning_topic]
         # Trim text significantly to save tokens and prevent rate limit exhaustion
         combined_text = "\n".join([d.page_content[:600] for d in winning_docs[:2]])
-        kg_data_obj = kg_chain.invoke({
+        
+        raw_completion = kg_chain.invoke({
             "topic": winning_topic, 
             "text": combined_text,
             "format_instructions": kg_parser.get_format_instructions()
         })
+        
+        # Clean markdown and manually filter out hallucinated trailing empty dicts `{}`
+        cleaned_json = clean_json_response(raw_completion)
+        parsed_dict = json.loads(cleaned_json)
+        
+        valid_rels = [
+            r for r in parsed_dict.get("relationships", [])
+            if isinstance(r, dict) and r.get("subject") and r.get("relation") and r.get("object")
+        ]
+        parsed_dict["relationships"] = valid_rels
+        
+        # Safely hydrate Pydantic model
+        kg_data_obj = KnowledgeGraphResult(**parsed_dict)
         
         # Convert Pydantic object to dict
         kg_data = {
@@ -704,10 +723,10 @@ def process_triage_chat(history: list, count: int) -> dict:
         # Opening question — fully LLM-driven, no hardcoded tree
         system_content = (
             "You are a Senior Clinical Triage Officer at Curo AI. You are starting a new diagnostic interview with a patient.\n"
-            "Generate an opening question to begin the clinical intake. Ask where the primary clinical concern is focused.\n\n"
+            "Generate an opening question to begin the clinical intake. Ask what their primary symptom or concern is.\n\n"
             "RULES:\n"
-            "1. Provide 5-6 broad clinical category options (e.g., Head & Neurological, Chest & Respiratory, Abdomen & Digestive, etc.)\n"
-            "2. ALWAYS include 'Other (please specify)' as the final option.\n"
+            "1. Provide 4-5 broad category options (e.g., 'Headache or fever', 'Stomach or digestive issues', 'Cough or breathing issues', 'Pain or injury') to help them click quickly if they want to.\n"
+            "2. DO NOT include an 'Other' option explicitly anymore — the UI now permanently handles custom typing automatically.\n"
             "3. Be warm and professional.\n"
             "4. FORMAT: Return a valid JSON object.\n"
             f"5. {triage_parser.get_format_instructions()}"
@@ -720,16 +739,16 @@ def process_triage_chat(history: list, count: int) -> dict:
         # Follow-up questions
         triage_prompt = [
             SystemMessage(content=(
-                "You are a friendly and warm Healthcare Assistant at Curo AI. You are having a casual but thorough conversation with a patient.\n"
-                "Your goal is to understand their symptoms in simple, clear terms to help guide them toward the right care.\n\n"
-                "IMPORTANT RULES:\n"
-                "1. KEEP IT SIMPLE: Ask questions using everyday language that any patient can understand. Avoid complex medical jargon.\n"
-                "2. NO REDUNDANCY: Never re-ask something already covered in the conversation history.\n"
-                "3. BE WARM: Use a caring, conversational tone. Make the patient feel heard.\n"
-                "4. GENERIC OPTIONS: Provide 3-4 simple, clear answer choices that cover the most common possibilities.\n"
-                "5. ALWAYS INCLUDE 'Other (please specify)' as the LAST option in EVERY question — patients must always have the freedom to describe their experience in their own words.\n"
-                "6. ASK ABOUT: duration, severity, what makes it better/worse, associated symptoms, and any medications.\n"
-                "7. FORMAT: You MUST return a valid JSON object.\n"
+                "You are an expert Clinical Triage Assistant at Curo AI conducting a diagnostic interview.\n"
+                "Your objective is to systematically gather the missing puzzle pieces about the patient's condition without ever repeating yourself.\n\n"
+                "STRICT RULES FOR ASKING QUESTIONS:\n"
+                "1. NO REDUNDANCY: Analyze the conversation history carefully. NEVER ask about a clinical dimension (e.g., duration, severity, location) if the patient has already provided that information or a related detail.\n"
+                "2. PROGRESS THE INTERVIEW: If you know WHAT it is, ask HOW LONG (Onset/Duration). If you know HOW LONG, ask HOW BAD (Severity/Quality). If you know HOW BAD, ask WHAT ELSE (Associated Symptoms/Triggers).\n"
+                "3. BE SPECIFIC YET ACCESSIBLE: Ask targeted medical questions but use everyday language (e.g., 'Does the pain move anywhere else?' instead of 'Does the pain radiate?').\n"
+                "4. DYNAMIC OPTIONS (ANSWERS): Generate 3-5 highly relevant, realistic clickable *answers* to your question. DO NOT put follow-up questions inside the options array! The options must be statements the patient would say (e.g., 'Yes, it's severe', 'No', 'Only at night').\n"
+                "5. DO NOT include 'Other (please specify)' in the options array. The user interface now handles custom typing natively.\n"
+                "6. THE QUESTION FIELD: Use the 'question' field for the ONE main question you are asking the patient right now.\n"
+                "7. FORMAT: You MUST return a valid JSON object matching the schema.\n"
                 f"8. {triage_parser.get_format_instructions()}\n\n"
                 "CONVERSATION SO FAR:"
             ))
@@ -757,13 +776,13 @@ def process_triage_chat(history: list, count: int) -> dict:
         print(f"[*] Triage Pydantic Parsing Error: {e} | Raw: {response.content[:150]}")
         if count == 0:
             return {
-                "question": "Welcome! Where is your primary clinical concern focused?",
-                "options": ["Head & Neurological", "Chest & Respiratory", "Abdomen & Digestive", "Bones & Joints", "Skin & Appearance", "Mood & Mental State", "Other (please specify)"],
+                "question": "Welcome! What is your primary symptom or concern today?",
+                "options": ["Headache or fever", "Stomach or digestive", "Cough or breathing", "Pain or injury"],
                 "finished": False
             }
         return {
-            "question": "Can you provide more details about any other symptoms or how long this has been happening?",
-            "options": ["Just started (last 24h)", "Few days", "Over a week", "Other (please specify)"],
+            "question": "Can you provide a little more detail about what you're feeling?",
+            "options": ["Just started recently", "It's been a few days", "Happening for a while"],
             "finished": False
         }
 
@@ -1256,10 +1275,7 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
     Performs multi-angle research, scrapes actual page content from top results,
     and synthesizes a comprehensive, cited response.
     """
-    try:
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
+
     from langchain_core.prompts import PromptTemplate
     from langchain_core.output_parsers import StrOutputParser
     import time
@@ -1345,72 +1361,65 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         english_count = sum(1 for word in english_markers if f' {word} ' in f' {combined} ')
         return english_count >= 3  # At least 3 English marker words
 
-    # --- Phase 1: Multi-angle DuckDuckGo search ---
-    search_queries = [
-        f"{user_query} medical treatment guidelines",
-        f"{user_query} causes symptoms diagnosis",
-        f"{user_query} home remedies natural treatment",
-        f"{user_query} when to see doctor red flags",
-    ]
-    
-    # Primary search attempt (without context manager for broader version compatibility)
+    # --- Phase 1: Exa Search ---
+    print(f"[*] Attempting Exa Search for trusted medical sources...")
     try:
-        ddgs = DDGS()
-        for sq in search_queries:
-            try:
-                results = list(ddgs.text(sq, region='us-en', safesearch='moderate', max_results=8))
-                for r in results:
-                    url, title, snippet = _extract_result_fields(r)
-                    if not url or url in seen_urls:
-                        continue
-                    if _is_blocked_domain(url):
-                        print(f"  [✗] Blocked: {url[:60]}")
-                        continue
-                    if not _is_english_content(title, snippet):
-                        print(f"  [✗] Non-English: {url[:60]}")
-                        continue
-                    seen_urls.add(url)
-                    raw_results.append({
-                        'href': url,
-                        'title': title,
-                        'body': snippet,
-                        'trusted': _is_trusted_domain(url)
-                    })
-            except Exception as inner_e:
-                print(f"[!] Sub-query failed: {sq[:50]} — {inner_e}")
-                continue
-            # Small delay between queries to avoid rate limiting
-            time.sleep(0.3)
-    except Exception as e:
-        print(f"[!] DuckDuckGo primary search failed: {e}")
-        traceback.print_exc()
-
-    # Fallback: If primary search yielded no results, retry with a single direct query
-    if not raw_results:
-        print("[*] Primary search returned 0 results. Attempting fallback single query via HTML backend...")
-        time.sleep(1)  # Brief pause
+        from exa_py import Exa
+        import os
+        exa_key = os.environ.get("EXA_API_KEY") or "542ee66c-d1f8-4b4b-8fed-694741ce9956"
+        exa = Exa(exa_key)
+        
         try:
-            ddgs_retry = DDGS()
-            fallback_results = list(ddgs_retry.text(user_query, region='us-en', safesearch='moderate', backend='html', max_results=15))
-            for r in fallback_results:
-                url, title, snippet = _extract_result_fields(r)
-                if not url or url in seen_urls:
+            # Request a larger pool of results so we can filter for domain diversity
+            response = exa.search_and_contents(
+                user_query,
+                type="neural",
+                num_results=15,
+                text=True,
+                include_domains=list(TRUSTED_DOMAINS)
+            )
+            
+            from urllib.parse import urlparse
+            domain_counts = {}
+            seen_titles = set()
+            
+            for res in response.results:
+                url, title, text = res.url, res.title, res.text
+                if not url or url in seen_urls: continue
+                
+                # Strict duplicate content filter based on title
+                clean_title = " ".join((title or "").lower().split())
+                if clean_title in seen_titles: continue
+                
+                domain = urlparse(url).netloc.lower().replace('www.', '')
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+                
+                # Force diversity: maximum 2 results from the same website
+                if domain_counts[domain] > 2:
                     continue
-                if _is_blocked_domain(url):
-                    continue
-                if not _is_english_content(title, snippet):
-                    continue
+                    
                 seen_urls.add(url)
+                seen_titles.add(clean_title)
+                
+                snippet = text[:300] + "..." if text and len(text) > 300 else (text or "No content available")
+                
                 raw_results.append({
-                    'href': url,
-                    'title': title,
-                    'body': snippet,
-                    'trusted': _is_trusted_domain(url)
+                    'href': url, 
+                    'title': title, 
+                    'body': snippet, 
+                    'trusted': True,  # Forced by include_domains
+                    'full_text': text # Store full text to bypass scraping
                 })
-            print(f"[*] Fallback search collected {len(raw_results)} results.")
-        except Exception as retry_e:
-            print(f"[!] Fallback search also failed: {retry_e}")
-            traceback.print_exc()
+                
+                if len(raw_results) >= 6:
+                    break
+        except Exception as e:
+            print(f"[!] Exa Search API failure: {e}")
+            
+    except ImportError:
+        print("[-] exa_py not installed. Run: pip install exa_py")
+    except Exception as e:
+        print(f"[!] Web Search failed entirely: {e}")
 
     # Sort results: trusted domains first, then others
     raw_results.sort(key=lambda x: (0 if x.get('trusted') else 1))
@@ -1418,7 +1427,7 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
     trusted_count = sum(1 for r in raw_results if r.get('trusted'))
     print(f"[*] Collected {len(raw_results)} quality search results ({trusted_count} from trusted medical sites).")
 
-    # --- Phase 2: Scrape actual page content from top results ---
+    # --- Phase 2: Process Exa contents or fallback scrape ---
     enriched_context = ""
     source_index = 0
     
@@ -1430,8 +1439,10 @@ def process_generic_query(user_query: str, user_id: str = None) -> dict:
         if not url:
             continue
         
-        # Attempt to scrape full page text for deeper context
-        page_text = _scrape_page_text(url)
+        # Use full text provided by Exa, fallback to manual scraping if missing
+        page_text = r.get('full_text')
+        if not page_text:
+            page_text = _scrape_page_text(url)
         
         source_index += 1
         
