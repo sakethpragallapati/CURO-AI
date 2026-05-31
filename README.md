@@ -1,8 +1,16 @@
 # CURO AI
 
-[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Firebase](https://img.shields.io/badge/Firebase-FFCA28.svg?logo=firebase&logoColor=black)](https://firebase.google.com/)
+<br>
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg?logo=python&logoColor=white)](https://www.python.org)
+[![LangChain](https://img.shields.io/badge/LangChain-1C3C3C.svg)](https://langchain.com/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-018bff.svg?logo=neo4j&logoColor=white)](https://neo4j.com/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-FF4B4B.svg)](https://www.trychroma.com/)
+[![Groq](https://img.shields.io/badge/Groq-f55036.svg)](https://groq.com/)
 
 CURO AI is an advanced Clinical Retrieval-Augmented Generation (RAG) assistant engineered to support symptom analysis, interactive clinical triage, and secure health record management. By integrating state-of-the-art Large Language Models (LLMs) with graph databases and vector search, CURO AI delivers highly accurate, grounded medical insights and Differential Diagnosis (DDx) logic.
 
