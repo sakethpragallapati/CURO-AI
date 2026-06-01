@@ -295,6 +295,25 @@ def build_local_graph_data(kg_data: dict) -> dict:
         if key not in seen_links:
             seen_links.add(key)
             unique_links.append(link)
+            
+    # Enforce global connectivity to the central topic (prevent floating clusters)
+    from collections import defaultdict
+    adj = defaultdict(list)
+    for link in unique_links:
+        adj[link["source"]].append(link["target"])
+        adj[link["target"]].append(link["source"])
+        
+    visited = set()
+    q = [topic]
+    while q:
+        curr = q.pop(0)
+        if curr not in visited:
+            visited.add(curr)
+            q.extend(adj[curr])
+            
+    for node in nodes:
+        if node not in visited:
+            unique_links.append({"source": topic, "target": node, "label": "ASSOCIATED_WITH"})
     
     nodes_list = [{"id": node, "label": node} for node in nodes]
     return {"nodes": nodes_list, "links": unique_links}
@@ -571,8 +590,13 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
         cleaned_json = clean_json_response(raw_completion)
         parsed_dict = json.loads(cleaned_json)
         
+        # Safely extract relationships regardless of casing
+        raw_rels = parsed_dict.get("relationships", parsed_dict.get("Relationships", []))
+        if not isinstance(raw_rels, list):
+            raw_rels = []
+            
         valid_rels = [
-            r for r in parsed_dict.get("relationships", [])
+            r for r in raw_rels
             if isinstance(r, dict) and r.get("subject") and r.get("relation") and r.get("object")
         ]
         parsed_dict["relationships"] = valid_rels
