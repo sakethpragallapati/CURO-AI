@@ -295,7 +295,7 @@ export default function ChatInterface() {
     const fetchRecordsCount = async () => {
       if (!auth.currentUser) return;
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/records/list?user_id=${encodeURIComponent(auth.currentUser.uid)}`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/records/list?user_id=${encodeURIComponent(auth.currentUser.uid)}`);
         if (res.ok) {
           const data = await res.json();
           setRecordsCount(data.total_chunks || 0);
@@ -438,7 +438,7 @@ export default function ChatInterface() {
     try {
       const formData = new FormData();
       formData.append('file', wavBlob, 'audio.wav');
-      const response = await fetch('http://localhost:8000/api/asr', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/asr`, {
         method: 'POST',
         body: formData,
       });
@@ -477,7 +477,7 @@ export default function ChatInterface() {
     }
     
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/records/upload?user_id=${auth.currentUser.uid}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/records/upload?user_id=${auth.currentUser.uid}`, {
         method: 'POST',
         body: formData
       });
@@ -527,7 +527,7 @@ export default function ChatInterface() {
       let isFollowUp = false;
 
       if (currentMode === 'generic') {
-        endpoint = 'http://127.0.0.1:8000/api/generic-analyze';
+        endpoint = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/generic-analyze`;
         payload = { query: targetQuery, user_id: auth.currentUser?.uid };
       } else {
         const prevResults = newMessages.filter(m => m.mode === 'deep-research' && m.result);
@@ -535,7 +535,7 @@ export default function ChatInterface() {
         
         if (lastResultMsg?.result) {
           isFollowUp = true;
-          endpoint = 'http://127.0.0.1:8000/api/chat';
+          endpoint = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/chat`;
           const chatHistory = newMessages.map(m => ({ 
             role: m.role, 
             content: m.content || (m.result ? `[Deep Research Results for: ${m.result.winning_diagnosis}]` : '') 
@@ -547,7 +547,7 @@ export default function ChatInterface() {
             user_id: auth.currentUser?.uid
           };
         } else {
-          endpoint = 'http://127.0.0.1:8000/api/analyze';
+          endpoint = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/analyze`;
           payload = {
             query: targetQuery,
             demography: { age, sex: sex !== 'Not specified' ? sex : undefined, heartRate, bloodPressure, spo2, temp, respRate },

@@ -31,7 +31,7 @@ export default function TriageAssistant() {
   const startTriage = async () => {
     setTriageLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/triage/chat', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/triage/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ history: [], question_count: 0 })
@@ -65,7 +65,7 @@ export default function TriageAssistant() {
 
     setTriageLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/triage/chat', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/triage/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -112,7 +112,7 @@ export default function TriageAssistant() {
     setTriageLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/triage/chat', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/triage/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

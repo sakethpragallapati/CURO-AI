@@ -126,7 +126,7 @@ export default function HealthRecordsVault({ userId }: { userId: string }) {
   const fetchDocuments = useCallback(async () => {
     setIsLoadingDocs(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/records/list?user_id=${encodeURIComponent(userId)}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/records/list?user_id=${encodeURIComponent(userId)}`);
       if (res.ok) {
         const data: RecordsListResponse = await res.json();
         setDocuments(data.documents || []);
@@ -163,7 +163,7 @@ export default function HealthRecordsVault({ userId }: { userId: string }) {
     pdfFiles.forEach(file => formData.append('files', file));
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/records/upload?user_id=${encodeURIComponent(userId)}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/records/upload?user_id=${encodeURIComponent(userId)}`, {
         method: 'POST',
         body: formData,
       });
@@ -198,7 +198,7 @@ export default function HealthRecordsVault({ userId }: { userId: string }) {
     setDeletingFile(filename || '__all__');
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/records/delete', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/records/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, filename: filename || null }),
@@ -229,7 +229,7 @@ export default function HealthRecordsVault({ userId }: { userId: string }) {
     setIsQuerying(true);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/records/query', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/records/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: userMsg, user_id: userId }),
