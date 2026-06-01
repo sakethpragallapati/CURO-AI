@@ -1,5 +1,7 @@
 # CURO AI
 
+**Live Deployment:** [https://curo-ai-delta.vercel.app/](https://curo-ai-delta.vercel.app/)
+
 [![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
@@ -11,6 +13,11 @@
 [![Neo4j](https://img.shields.io/badge/Neo4j-018bff.svg?logo=neo4j&logoColor=white)](https://neo4j.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-FF4B4B.svg)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-f55036.svg)](https://groq.com/)
+<br>
+[![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)](https://vercel.com/)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-FFD21E?logo=huggingface&logoColor=000)](https://huggingface.co/)
+[![Docker](https://img.shields.io/badge/Docker-2CA5E0?logo=docker&logoColor=white)](https://www.docker.com/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
 CURO AI is an advanced Clinical Retrieval-Augmented Generation (RAG) assistant engineered to support symptom analysis, interactive clinical triage, and secure health record management. By integrating state-of-the-art Large Language Models (LLMs) with graph databases and vector search, CURO AI delivers highly accurate, grounded medical insights and Differential Diagnosis (DDx) logic.
 
@@ -21,6 +28,7 @@ CURO AI is an advanced Clinical Retrieval-Augmented Generation (RAG) assistant e
   - [Prerequisites](#prerequisites)
   - [Backend Setup](#backend-setup)
   - [Frontend Setup](#frontend-setup)
+- [Deployment](#deployment)
 - [Project Structure](#project-structure)
 
 ---
@@ -123,6 +131,17 @@ CURO AI employs a decoupled microservices architecture, separating the interacti
    npm run dev
    ```
    *The application will be available at `http://localhost:3000`.*
+
+---
+
+## Deployment
+
+CURO AI uses a fully automated CI/CD pipeline managed by GitHub Actions (`.github/workflows/deploy-backend.yml`).
+
+- **Frontend (Vercel):** The Next.js application is deployed to Vercel. The GitHub Action utilizes the Vercel CLI to securely pull configuration, build the production bundle, and deploy.
+- **Backend (Hugging Face Spaces):** The FastAPI Python backend runs inside a Docker container on Hugging Face Spaces. The GitHub Action automatically force-pushes the `backend/` directory to the Space upon changes to the `master` branch.
+
+All secrets (Firebase, Groq, Neo4j, etc.) are securely managed via Vercel Environment Variables and Hugging Face Secrets.
 
 ---
 
