@@ -525,11 +525,18 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
     # 5. Graph Architect - Revamped for Better Linkage and Lower Token Usage
     kg_prompt = PromptTemplate.from_template(
         "ROLE: You are an expert Clinical Ontologist.\n"
-        "TASK: Extract an interconnected clinical knowledge network regarding the diagnosis: {topic}.\n"
-        "TEXT:\n{text}\n\n"
-        "INSTRUCTION: Extract exact logical relationships (Triplets) linking {topic} to its Symptoms, Causes, Diagnostic Tests, and Treatments. "
-        "Also link specific symptoms to treatments if applicable. DO NOT create disconnected floating nodes.\n"
-        "CRITICAL: Output ONLY a JSON object populated with ACTUAL INSTANCES from the text. DO NOT output a JSON Schema.\n"
+        "TASK: Extract a rich, interconnected clinical knowledge network anchored on the primary diagnosis: {topic}.\n\n"
+        "PATIENT SYMPTOMS: {patient_symptoms}\n"
+        "CLINICAL PATHWAYS & TREATMENTS: {clinical_pathways}\n"
+        "ALTERNATIVE DIFFERENTIAL DIAGNOSES: {differentials}\n"
+        "ACADEMIC LITERATURE:\n{text}\n\n"
+        "INSTRUCTION: Extract exact logical relationships (Triplets) linking {topic} to:\n"
+        "1. The explicit patient symptoms (e.g., PRESENTS_WITH)\n"
+        "2. Known Risk Factors (e.g., INCREASES_RISK)\n"
+        "3. Treatments and Medications from the clinical pathways (e.g., TREATED_WITH)\n"
+        "4. Alternative Differential Diagnoses (e.g., DIFFERENTIAL_DIAGNOSIS)\n"
+        "DO NOT create disconnected floating nodes.\n"
+        "CRITICAL: Output ONLY a JSON object populated with ACTUAL INSTANCES. DO NOT output a JSON Schema.\n"
         "FORMAT INSTRUCTIONS: {format_instructions}"
     )
     # Use StrOutputParser to intercept raw JSON for manual cleanup before strict Pydantic parsing
@@ -547,8 +554,14 @@ def process_curo_query(user_query: str, demography: dict = None, user_id: str = 
         if not combined_text.strip():
             combined_text = f"Standard medical facts and clinical pathways for {winning_topic}."
         
+        # Filter out the winning diagnosis from the extracted DDx for the differentials list
+        other_differentials = [d for d in clinical_terms if d != winning_topic]
+        
         raw_completion = kg_chain.invoke({
             "topic": winning_topic, 
+            "patient_symptoms": user_query,
+            "clinical_pathways": clinical_pathways,
+            "differentials": ", ".join(other_differentials) if other_differentials else "None",
             "text": combined_text,
             "format_instructions": kg_parser.get_format_instructions()
         })
